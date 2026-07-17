@@ -1,0 +1,122 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply overflow-x-hidden text-stone-900;
+    background:
+      radial-gradient(circle at 12% 14%, rgba(255, 185, 120, 0.34), transparent 30%),
+      radial-gradient(circle at 88% 8%, rgba(112, 190, 145, 0.28), transparent 32%),
+      linear-gradient(180deg, #fff8e8 0%, #f4fbdf 44%, #e7f3ef 100%);
+  }
+
+  button,
+  a,
+  input,
+  textarea {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  ::selection {
+    background: #f6c66d;
+    color: #2c2416;
+  }
+}
+
+@layer components {
+  .journey-page {
+    @apply relative min-h-[calc(100vh-5rem)] overflow-hidden rounded-[2rem] border border-white/70 p-5 sm:p-8 lg:p-10;
+    background:
+      radial-gradient(circle at 8% 16%, rgba(255, 255, 255, 0.84), transparent 28%),
+      radial-gradient(circle at 84% 18%, rgba(255, 216, 145, 0.42), transparent 30%),
+      linear-gradient(135deg, rgba(255, 252, 238, 0.94), rgba(230, 247, 221, 0.9));
+    box-shadow: 0 28px 90px rgba(82, 63, 28, 0.13);
+  }
+
+  .world-page {
+    @apply relative min-h-[calc(100vh-5rem)] overflow-hidden rounded-[2rem] p-5 sm:p-8 lg:p-10;
+    box-shadow: 0 28px 90px rgba(64, 54, 33, 0.14);
+  }
+
+  .floating-island {
+    @apply rounded-[2rem] border border-white/70 bg-white/70 p-5 shadow-[0_18px_50px_rgba(85,65,28,0.10)] backdrop-blur-xl transition duration-300;
+  }
+
+  .floating-island:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 24px 65px rgba(85, 65, 28, 0.16);
+  }
+
+  .organic-button {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-bold text-stone-900 shadow-[0_12px_28px_rgba(171,111,34,0.20)] transition duration-300 focus:outline-none focus:ring-4 focus:ring-amber-300/50;
+    background: linear-gradient(135deg, #ffd36f, #ffad6b);
+  }
+
+  .organic-button:hover {
+    transform: translateY(-2px) scale(1.01);
+  }
+
+  .soft-button {
+    @apply inline-flex items-center justify-center gap-2 rounded-full border border-white/70 bg-white/70 px-4 py-2 text-sm font-semibold text-stone-700 shadow-sm transition hover:bg-white focus:outline-none focus:ring-4 focus:ring-emerald-200;
+  }
+
+  .story-label {
+    @apply inline-flex w-fit items-center gap-2 rounded-full border border-white/70 bg-white/65 px-3 py-1 text-xs font-bold uppercase tracking-[0.14em] text-stone-600;
+  }
+
+  .path-line {
+    background-image: linear-gradient(90deg, rgba(126, 91, 39, 0.28) 50%, transparent 0);
+    background-size: 20px 2px;
+  }
+
+  .leaf-shadow {
+    box-shadow: 0 18px 35px rgba(63, 109, 77, 0.18);
+  }
+}
+
+@layer utilities {
+  @keyframes float-gentle {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+
+  @keyframes bob {
+    0%, 100% { transform: rotate(-2deg) translateY(0); }
+    50% { transform: rotate(2deg) translateY(-7px); }
+  }
+
+  @keyframes draw-path {
+    from { background-position: 0 0; }
+    to { background-position: 40px 0; }
+  }
+
+  @keyframes glow-soft {
+    0%, 100% { box-shadow: 0 0 0 rgba(252, 186, 86, 0); }
+    50% { box-shadow: 0 0 34px rgba(252, 186, 86, 0.36); }
+  }
+
+  .animate-float-gentle {
+    animation: float-gentle 5.5s ease-in-out infinite;
+  }
+
+  .animate-bob {
+    animation: bob 6s ease-in-out infinite;
+  }
+
+  .animate-draw-path {
+    animation: draw-path 2.4s linear infinite;
+  }
+
+  .animate-glow-soft {
+    animation: glow-soft 3.5s ease-in-out infinite;
+  }
+
+  .delay-100 { animation-delay: 100ms; }
+  .delay-200 { animation-delay: 200ms; }
+  .delay-300 { animation-delay: 300ms; }
+}
