@@ -35,6 +35,14 @@ export const programmingLearningController = {
     }
   },
 
+  dashboard: async (req, res, next) => {
+    try {
+      res.status(200).json(await programmingLearningService.getDashboardAnalytics(getUserId(req)))
+    } catch (error) {
+      next(error)
+    }
+  },
+
   submitQuiz: async (req, res, next) => {
     try {
       res.status(200).json(await programmingLearningService.submitQuiz(getUserId(req), req.params.id, req.body.answers || []))
@@ -66,4 +74,5 @@ export const programmingLearningController = {
       next(error)
     }
   },
+
 }

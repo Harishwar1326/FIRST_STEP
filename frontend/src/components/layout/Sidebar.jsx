@@ -23,9 +23,14 @@ const navItems = [
   { path: '/thinking-lab', icon: FlaskConical, label: 'Challenge Zone', tone: 'from-violet-200 to-rose-100' },
 ]
 
+const adminNavItems = [
+  { path: '/admin', icon: Map, label: 'Admin Dashboard', tone: 'from-emerald-200 to-cyan-100' },
+]
+
 const Sidebar = () => {
-  const { logout } = useAuth()
+  const { user, logout } = useAuth()
   const { theme, toggleTheme } = useTheme()
+  const visibleNavItems = user?.role === 'admin' ? [...adminNavItems, ...navItems] : navItems
 
   return (
     <aside className="sticky top-24 hidden h-[calc(100vh-7rem)] w-72 shrink-0 flex-col rounded-[2rem] border border-white/70 bg-white/60 p-4 shadow-[0_24px_80px_rgba(83,68,35,0.12)] backdrop-blur-2xl lg:flex">
@@ -42,7 +47,7 @@ const Sidebar = () => {
       </div>
 
       <nav className="flex-1 space-y-2 overflow-y-auto pr-1">
-        {navItems.map((item) => (
+        {visibleNavItems.map((item) => (
           <NavLink
             key={item.path}
             to={item.path}

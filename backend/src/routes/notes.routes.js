@@ -10,6 +10,10 @@ router.use(authMiddleware);
 
 router.get('/', notesController.getNotes);
 router.get('/library/meta', notesController.getLibraryMeta);
+router.get('/whiteboards', notesController.getWhiteboards);
+router.post('/whiteboards', notesController.createWhiteboard);
+router.get('/whiteboards/:id', notesController.getWhiteboard);
+router.put('/whiteboards/:id', notesController.saveWhiteboard);
 router.post('/upload', upload.single('file'), notesController.uploadDocument);
 router.get('/:id', notesController.getNoteById);
 router.patch('/:id', notesController.updateNoteMetadata);

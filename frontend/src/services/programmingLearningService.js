@@ -6,6 +6,11 @@ export const programmingLearningService = {
     return response.data
   },
 
+  getDashboard: async () => {
+    const response = await api.get('/programming-learning/dashboard')
+    return response.data
+  },
+
   getLesson: async (lessonId) => {
     const response = await api.get(`/programming-learning/lesson/${lessonId}`)
     return response.data

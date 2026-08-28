@@ -32,6 +32,46 @@ export const notesController = {
     }
   },
 
+  getWhiteboards: async (req, res, next) => {
+    try {
+      const userId = req.user.id
+      const result = await notesService.getWhiteboards(userId)
+      res.status(200).json(result)
+    } catch (error) {
+      next(error)
+    }
+  },
+
+  createWhiteboard: async (req, res, next) => {
+    try {
+      const userId = req.user.id
+      const result = await notesService.createWhiteboard(userId, req.body)
+      res.status(201).json(result)
+    } catch (error) {
+      next(error)
+    }
+  },
+
+  getWhiteboard: async (req, res, next) => {
+    try {
+      const userId = req.user.id
+      const result = await notesService.getWhiteboard(req.params.id, userId)
+      res.status(200).json(result)
+    } catch (error) {
+      next(error)
+    }
+  },
+
+  saveWhiteboard: async (req, res, next) => {
+    try {
+      const userId = req.user.id
+      const result = await notesService.saveWhiteboard(req.params.id, userId, req.body)
+      res.status(200).json(result)
+    } catch (error) {
+      next(error)
+    }
+  },
+
   getNoteById: async (req, res, next) => {
     try {
       const { id } = req.params

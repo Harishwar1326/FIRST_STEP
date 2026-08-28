@@ -14,9 +14,11 @@ import KnowledgeForestPage from '../pages/features/KnowledgeForestPage'
 import ThinkingLabPage from '../pages/features/ThinkingLabPage'
 import ProgrammingLearningPage from '../pages/features/ProgrammingLearningPage'
 import NotFoundPage from '../pages/NotFoundPage'
+import AdminDashboardPage from '../pages/admin/AdminDashboardPage'
+import AdminStudentDetailPage from '../pages/admin/AdminStudentDetailPage'
 
 // Protected Route Component
-const ProtectedRoute = ({ children }) => {
+const ProtectedRoute = ({ children, roles }) => {
   const { user, loading } = useAuth()
   
   if (loading) {
@@ -25,6 +27,10 @@ const ProtectedRoute = ({ children }) => {
   
   if (!user) {
     return <Navigate to="/login" replace />
+  }
+
+  if (roles?.length && !roles.includes(user.role)) {
+    return <Navigate to="/" replace />
   }
   
   return children
@@ -98,6 +104,22 @@ const AppRouter = () => {
         <ProtectedRoute>
           <MainLayout>
             <ThinkingLabPage />
+          </MainLayout>
+        </ProtectedRoute>
+      }/>
+
+      <Route path="/admin" element={
+        <ProtectedRoute roles={['admin']}>
+          <MainLayout>
+            <AdminDashboardPage />
+          </MainLayout>
+        </ProtectedRoute>
+      }/>
+
+      <Route path="/admin/students/:id" element={
+        <ProtectedRoute roles={['admin']}>
+          <MainLayout>
+            <AdminStudentDetailPage />
           </MainLayout>
         </ProtectedRoute>
       }/>

@@ -17,6 +17,7 @@ export const notesRepository = {
   async findByUserId(userId, filters = {}) {
     const query = { userId: String(userId) }
 
+    if (filters.noteType) query.noteType = filters.noteType
     if (filters.subject) query.subject = filters.subject
     if (filters.folder) query.folder = filters.folder
     if (filters.favorite === 'true') query.isFavorite = true
@@ -102,6 +103,48 @@ export const notesRepository = {
             type: 'tagged',
             label: 'Document details updated',
           },
+        },
+      },
+      { new: true }
+    )
+  },
+
+  async createWhiteboard(userId, title = 'Untitled Note') {
+    const note = new Note({
+      userId: String(userId),
+      title,
+      subject: 'Whiteboard',
+      folder: 'Digital Notebook',
+      tags: [],
+      status: 'processed',
+      noteType: 'whiteboard',
+      tldrawSnapshot: null,
+      activity: [{
+        type: 'uploaded',
+        label: 'Whiteboard note created',
+      }],
+    })
+    await note.save()
+    return note
+  },
+
+  async findWhiteboards(userId) {
+    return Note.find({ userId: String(userId), noteType: 'whiteboard' })
+      .select('title tldrawSnapshot createdAt updatedAt lastOpenedAt')
+      .sort({ updatedAt: -1 })
+  },
+
+  async findWhiteboardById(noteId, userId) {
+    return Note.findOne({ _id: noteId, userId: String(userId), noteType: 'whiteboard' })
+  },
+
+  async updateWhiteboardSnapshot(noteId, userId, snapshot) {
+    return Note.findOneAndUpdate(
+      { _id: noteId, userId: String(userId), noteType: 'whiteboard' },
+      {
+        $set: {
+          tldrawSnapshot: snapshot,
+          lastOpenedAt: new Date(),
         },
       },
       { new: true }

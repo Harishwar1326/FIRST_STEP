@@ -7,6 +7,7 @@ import thinkingRoutes from './thinking.routes.js';
 import forestRoutes from './forest.routes.js';
 import learningRoutes from './learning.routes.js';
 import programmingLearningRoutes from './programmingLearning.routes.js';
+import adminRoutes from './admin.routes.js';
 
 const router = express.Router();
 
@@ -17,6 +18,7 @@ router.use('/academy', academyRoutes);
 router.use('/thinking', thinkingRoutes);
 router.use('/forest', forestRoutes);
 router.use('/programming-learning', programmingLearningRoutes);
+router.use('/admin', adminRoutes);
 router.use('/', learningRoutes);
 
 export default router;

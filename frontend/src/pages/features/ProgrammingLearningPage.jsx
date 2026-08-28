@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
@@ -18,17 +18,74 @@ import {
 import { programmingLearningService } from '../../services/programmingLearningService'
 
 const metricDefaults = {
-  watchPercentage: 92,
-  pauseCount: 1,
-  replayCount: 1,
+  watchPercentage: 0,
+  pauseCount: 0,
+  replayCount: 0,
   playbackSpeed: 1,
-  timeSpent: 24,
-  completed: true,
+  timeSpent: 0,
+  watchedSegments: [],
+  videoDuration: 0,
+  completed: false,
 }
+
+const getYouTubeVideoId = (url = '') => {
+  const match = String(url).match(/(?:youtube\.com\/(?:embed\/|watch\?v=)|youtu\.be\/)([^?&/]+)/)
+  return match?.[1] || ''
+}
+
+const loadYouTubeApi = () => {
+  if (window.YT?.Player) return Promise.resolve(window.YT)
+  if (window.firstStepYouTubeApiPromise) return window.firstStepYouTubeApiPromise
+
+  window.firstStepYouTubeApiPromise = new Promise((resolve) => {
+    const previousReady = window.onYouTubeIframeAPIReady
+    window.onYouTubeIframeAPIReady = () => {
+      previousReady?.()
+      resolve(window.YT)
+    }
+
+    if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
+      const script = document.createElement('script')
+      script.src = 'https://www.youtube.com/iframe_api'
+      document.body.appendChild(script)
+    }
+  })
+
+  return window.firstStepYouTubeApiPromise
+}
+
+const secondsToMinutes = (seconds = 0) => `${Math.round((Number(seconds) || 0) / 60)} min`
+
+const mergeSegments = (segments = []) =>
+  segments
+    .filter((segment) => Number(segment.end) > Number(segment.start))
+    .sort((a, b) => a.start - b.start)
+    .reduce((merged, segment) => {
+      const clean = { start: Number(segment.start), end: Number(segment.end) }
+      const previous = merged[merged.length - 1]
+      if (!previous || clean.start > previous.end + 0.5) return [...merged, clean]
+      previous.end = Math.max(previous.end, clean.end)
+      return merged
+    }, [])
+
+const getUniqueWatchedSeconds = (segments = []) =>
+  Math.round(mergeSegments(segments).reduce((sum, segment) => sum + segment.end - segment.start, 0))
 
 const ProgrammingLearningPage = () => {
   const queryClient = useQueryClient()
   const canvasRef = useRef(null)
+  const playerContainerRef = useRef(null)
+  const playerRef = useRef(null)
+  const syncInFlightRef = useRef(false)
+  const trackingRef = useRef({
+    playing: false,
+    lastTime: 0,
+    lastTickAt: 0,
+    lastReplayAt: 0,
+    watchedSegments: [],
+    syncTimer: null,
+    metrics: metricDefaults,
+  })
   const [selectedSubject, setSelectedSubject] = useState('')
   const [selectedLessonId, setSelectedLessonId] = useState('')
   const [metrics, setMetrics] = useState(metricDefaults)
@@ -69,6 +126,29 @@ const ProgrammingLearningPage = () => {
   const recommendation = lessonData?.recommendation
 
   useEffect(() => {
+    if (!lessonData?.progress) {
+      trackingRef.current.metrics = metricDefaults
+      trackingRef.current.watchedSegments = []
+      setMetrics(metricDefaults)
+      return
+    }
+
+    const nextMetrics = {
+      watchPercentage: lessonData.progress.watchPercentage || 0,
+      pauseCount: lessonData.progress.pauseCount || 0,
+      replayCount: lessonData.progress.replayCount || 0,
+      playbackSpeed: lessonData.progress.playbackSpeed || 1,
+      timeSpent: lessonData.progress.timeSpent || 0,
+      watchedSegments: lessonData.progress.watchedSegments || [],
+      videoDuration: lessonData.progress.videoDuration || 0,
+      completed: Boolean(lessonData.progress.completed),
+    }
+    trackingRef.current.metrics = nextMetrics
+    trackingRef.current.watchedSegments = nextMetrics.watchedSegments
+    setMetrics(nextMetrics)
+  }, [lessonData?.progress, selectedLessonId])
+
+  useEffect(() => {
     if (notes?.editableContent) setNotesDraft(notes.editableContent)
   }, [notes?.editableContent])
 
@@ -86,12 +166,90 @@ const ProgrammingLearningPage = () => {
   }, [subjectsQuery.data?.progress])
 
   const trackMutation = useMutation({
-    mutationFn: () => programmingLearningService.trackLesson(selectedLessonId, metrics),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['programming-lesson', selectedLessonId] })
+    mutationFn: (payload) => programmingLearningService.trackLesson(selectedLessonId, payload),
+    onMutate: () => {
+      syncInFlightRef.current = true
+    },
+    onSuccess: (data) => {
+      const progress = data?.progress
+      if (progress) {
+        const nextMetrics = {
+          watchPercentage: progress.watchPercentage || 0,
+          pauseCount: progress.pauseCount || 0,
+          replayCount: progress.replayCount || 0,
+          playbackSpeed: progress.playbackSpeed || 1,
+          timeSpent: progress.timeSpent || 0,
+          watchedSegments: progress.watchedSegments || [],
+          videoDuration: progress.videoDuration || 0,
+          completed: Boolean(progress.completed),
+        }
+        trackingRef.current.metrics = nextMetrics
+        trackingRef.current.watchedSegments = nextMetrics.watchedSegments
+        setMetrics(nextMetrics)
+      }
       queryClient.invalidateQueries({ queryKey: ['programming-subjects'] })
     },
+    onSettled: () => {
+      syncInFlightRef.current = false
+    },
   })
+
+  const updateMetricsFromTracker = useCallback((changes = {}) => {
+    const watchedSegments = mergeSegments(changes.watchedSegments || trackingRef.current.watchedSegments)
+    const videoDuration = changes.videoDuration ?? trackingRef.current.metrics.videoDuration
+    const uniqueWatchedSeconds = getUniqueWatchedSeconds(watchedSegments)
+    const watchPercentage = videoDuration ? Math.min(100, Math.round((uniqueWatchedSeconds / videoDuration) * 100)) : 0
+    const nextMetrics = {
+      ...trackingRef.current.metrics,
+      ...changes,
+      watchedSegments,
+      videoDuration,
+      timeSpent: uniqueWatchedSeconds,
+      watchPercentage,
+      completed: trackingRef.current.metrics.completed || watchPercentage >= 90,
+    }
+
+    trackingRef.current.metrics = nextMetrics
+    trackingRef.current.watchedSegments = watchedSegments
+    setMetrics(nextMetrics)
+    return nextMetrics
+  }, [])
+
+  const syncTracking = useCallback(() => {
+    if (!selectedLessonId || syncInFlightRef.current) return
+    trackMutation.mutate(trackingRef.current.metrics)
+  }, [selectedLessonId, trackMutation.mutate])
+
+  const addWatchedSegment = useCallback((start, end) => {
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end - start < 0.75) return
+    updateMetricsFromTracker({
+      watchedSegments: [...trackingRef.current.watchedSegments, { start, end }],
+    })
+  }, [updateMetricsFromTracker])
+
+  const isAlreadyWatched = useCallback((time) =>
+    trackingRef.current.watchedSegments.some((segment) => time >= segment.start - 1 && time <= segment.end + 1),
+  [])
+
+  const capturePlaybackTick = useCallback(() => {
+    const player = playerRef.current
+    if (!player?.getCurrentTime) return
+
+    const currentTime = player.getCurrentTime()
+    const lastTime = trackingRef.current.lastTime
+    const backwardsSeek = lastTime - currentTime > 5
+    const normalPlayback = currentTime > lastTime && currentTime - lastTime < 2.5
+
+    if (backwardsSeek && isAlreadyWatched(currentTime) && Date.now() - trackingRef.current.lastReplayAt > 3000) {
+      trackingRef.current.lastReplayAt = Date.now()
+      updateMetricsFromTracker({ replayCount: trackingRef.current.metrics.replayCount + 1 })
+      syncTracking()
+    } else if (normalPlayback) {
+      addWatchedSegment(lastTime, currentTime)
+    }
+
+    trackingRef.current.lastTime = currentTime
+  }, [addWatchedSegment, isAlreadyWatched, syncTracking, updateMetricsFromTracker])
 
   const quizMutation = useMutation({
     mutationFn: () =>
@@ -153,6 +311,96 @@ const ProgrammingLearningPage = () => {
   useEffect(() => {
     drawStarter()
   }, [selectedLessonId])
+
+  useEffect(() => {
+    const videoId = getYouTubeVideoId(lesson?.videoUrl)
+    const container = playerContainerRef.current
+    if (!videoId || !container) return undefined
+
+    let disposed = false
+
+    loadYouTubeApi().then((YT) => {
+      if (disposed || !playerContainerRef.current) return
+      playerRef.current?.destroy?.()
+      playerRef.current = new YT.Player(playerContainerRef.current, {
+        videoId,
+        width: '100%',
+        height: '100%',
+        playerVars: {
+          enablejsapi: 1,
+          modestbranding: 1,
+          rel: 0,
+        },
+        events: {
+          onReady: (event) => {
+            const duration = event.target.getDuration()
+            updateMetricsFromTracker({ videoDuration: duration || trackingRef.current.metrics.videoDuration || 0 })
+            trackingRef.current.lastTime = event.target.getCurrentTime() || 0
+          },
+          onStateChange: (event) => {
+            const YTState = window.YT?.PlayerState
+            const currentTime = event.target.getCurrentTime?.() || 0
+
+            if (event.data === YTState?.PLAYING) {
+              trackingRef.current.playing = true
+              trackingRef.current.lastTime = currentTime
+              trackingRef.current.lastTickAt = Date.now()
+              updateMetricsFromTracker({
+                videoDuration: event.target.getDuration?.() || trackingRef.current.metrics.videoDuration,
+                playbackSpeed: event.target.getPlaybackRate?.() || 1,
+              })
+              if (!trackingRef.current.syncTimer) {
+                trackingRef.current.syncTimer = window.setInterval(() => {
+                  capturePlaybackTick()
+                  if (Date.now() - trackingRef.current.lastTickAt > 15000) {
+                    trackingRef.current.lastTickAt = Date.now()
+                    syncTracking()
+                  }
+                }, 1000)
+              }
+              return
+            }
+
+            if (event.data === YTState?.PAUSED) {
+              const wasPlaying = trackingRef.current.playing
+              const wasSeeking = Math.abs(currentTime - trackingRef.current.lastTime) > 2.5
+              capturePlaybackTick()
+              trackingRef.current.playing = false
+              if (wasPlaying && !wasSeeking) {
+                updateMetricsFromTracker({ pauseCount: trackingRef.current.metrics.pauseCount + 1 })
+                syncTracking()
+              }
+              return
+            }
+
+            if (event.data === YTState?.ENDED) {
+              capturePlaybackTick()
+              trackingRef.current.playing = false
+              syncTracking()
+              return
+            }
+
+            if (event.data === YTState?.BUFFERING) {
+              capturePlaybackTick()
+              trackingRef.current.playing = false
+            }
+          },
+        },
+      })
+    })
+
+    return () => {
+      disposed = true
+      capturePlaybackTick()
+      syncTracking()
+      if (trackingRef.current.syncTimer) {
+        window.clearInterval(trackingRef.current.syncTimer)
+        trackingRef.current.syncTimer = null
+      }
+      playerRef.current?.destroy?.()
+      playerRef.current = null
+    }
+  }, [capturePlaybackTick, lesson?.videoUrl, syncTracking, updateMetricsFromTracker])
 
   return (
     <div className="world-page bg-[linear-gradient(135deg,#fff7ed_0%,#ecfeff_48%,#f7fee7_100%)]">
@@ -262,13 +510,7 @@ const ProgrammingLearningPage = () => {
             </div>
             <div className="aspect-video overflow-hidden rounded-[1.5rem] bg-stone-950 shadow-inner">
               {lesson?.videoUrl ? (
-                <iframe
-                  className="h-full w-full"
-                  src={lesson.videoUrl}
-                  title={lesson.title}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                />
+                <div ref={playerContainerRef} className="h-full w-full" title={lesson.title} />
               ) : null}
             </div>
           </div>
@@ -281,30 +523,22 @@ const ProgrammingLearningPage = () => {
               </div>
               <div className="space-y-4">
                 {[
-                  ['watchPercentage', 'Watch percentage', 0, 100],
-                  ['pauseCount', 'Pause count', 0, 12],
-                  ['replayCount', 'Replay count', 0, 8],
-                  ['timeSpent', 'Time spent', 1, 90],
-                ].map(([key, label, min, max]) => (
-                  <label key={key} className="block">
-                    <div className="mb-1 flex justify-between text-sm font-bold text-stone-600">
+                  ['Watch percentage', `${metrics.watchPercentage || 0}%`],
+                  ['Pause count', metrics.pauseCount || 0],
+                  ['Replay count', metrics.replayCount || 0],
+                  ['Time watched', secondsToMinutes(metrics.timeSpent)],
+                  ['Status', metrics.completed ? 'Completed' : 'In Progress'],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-[1.1rem] bg-white/70 p-4">
+                    <div className="flex justify-between gap-3 text-sm font-bold text-stone-600">
                       <span>{label}</span>
-                      <span>{metrics[key]}</span>
+                      <span className="text-stone-950">{value}</span>
                     </div>
-                    <input
-                      type="range"
-                      min={min}
-                      max={max}
-                      value={metrics[key]}
-                      onChange={(event) => setMetrics((current) => ({ ...current, [key]: Number(event.target.value) }))}
-                      className="w-full accent-orange-500"
-                    />
-                  </label>
+                  </div>
                 ))}
-                <button onClick={() => trackMutation.mutate()} className="organic-button w-full" disabled={trackMutation.isPending || !selectedLessonId}>
-                  <Save size={18} />
-                  Save learning activity
-                </button>
+                <p className="text-xs font-bold uppercase tracking-[0.12em] text-stone-500">
+                  Activity is captured automatically from video playback.
+                </p>
               </div>
             </section>
 

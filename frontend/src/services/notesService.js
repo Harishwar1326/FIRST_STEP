@@ -31,6 +31,26 @@ export const notesService = {
     return response.data
   },
 
+  getWhiteboards: async () => {
+    const response = await api.get('/notes/whiteboards')
+    return response.data
+  },
+
+  createWhiteboard: async (title) => {
+    const response = await api.post('/notes/whiteboards', { title })
+    return response.data
+  },
+
+  getWhiteboard: async (id) => {
+    const response = await api.get(`/notes/whiteboards/${id}`)
+    return response.data
+  },
+
+  saveWhiteboard: async (id, snapshot) => {
+    const response = await api.put(`/notes/whiteboards/${id}`, { snapshot })
+    return response.data
+  },
+
   updateNote: async (id, metadata) => {
     const response = await api.patch(`/notes/${id}`, metadata)
     return response.data

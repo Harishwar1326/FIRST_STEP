@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 import app from "./src/app.js";
 import { connectDB } from "./src/config/database.js";
 import { connectPostgres } from "./src/config/postgres.js";
+import { authService } from "./src/services/auth.service.js";
 import { createClient } from "redis";
 
 dotenv.config();
@@ -43,6 +44,7 @@ const startServer = async () => {
   // Connect to PostgreSQL (Neon) for user authentication (non-blocking)
   try {
     await connectPostgres();
+    await authService.ensureConfiguredAdmin();
   } catch (error) {
     console.warn(
       "⚠️  PostgreSQL connection failed. Some features may not work.",

@@ -56,7 +56,7 @@ const noteSchema = new mongoose.Schema(
     },
     filePath: {
       type: String,
-      required: true,
+      default: '',
     },
     mimeType: {
       type: String,
@@ -68,6 +68,16 @@ const noteSchema = new mongoose.Schema(
       type: String,
       enum: ['processing', 'processed', 'failed'],
       default: 'processing',
+    },
+    noteType: {
+      type: String,
+      enum: ['document', 'whiteboard'],
+      default: 'document',
+      index: true,
+    },
+    tldrawSnapshot: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
     },
     content: {
       type: String,

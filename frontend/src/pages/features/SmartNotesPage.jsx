@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   BookMarked,
@@ -19,6 +19,7 @@ import { notesService } from '../../services/notesService'
 import NoteCard from '../../components/notes/NoteCard'
 import ProcessingIndicator from '../../components/notes/ProcessingIndicator'
 import NoteDetailView from '../../components/notes/NoteDetailView'
+import WhiteboardStudio from '../../components/notes/WhiteboardStudio'
 
 const initialFilters = {
   search: '',
@@ -85,6 +86,11 @@ const SmartNotesPage = () => {
       console.error('Failed to refresh library meta:', err)
     }
   }
+
+  const handleWhiteboardLibraryChanged = useCallback(() => {
+    fetchNotes(filters)
+    refreshMeta()
+  }, [filters])
 
   const updateFilter = (key, value) => {
     setFilters((prev) => ({ ...prev, [key]: value }))
@@ -249,6 +255,10 @@ const SmartNotesPage = () => {
             </button>
           </div>
         )}
+
+        <div className="mt-8">
+          <WhiteboardStudio onLibraryChanged={handleWhiteboardLibraryChanged} />
+        </div>
 
         <div className="mt-8 grid gap-5 xl:grid-cols-[18rem_minmax(0,1fr)_18rem]">
           <aside className="space-y-4">

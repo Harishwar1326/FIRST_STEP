@@ -14,6 +14,34 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, Number(value) || 
 
 const isDbReady = () => mongoose.connection.readyState === 1
 
+const normalizeSegments = (segments = [], duration = 0) =>
+  segments
+    .map((segment) => ({
+      start: clamp(segment.start, 0, duration || 100000),
+      end: clamp(segment.end, 0, duration || 100000),
+    }))
+    .filter((segment) => segment.end - segment.start >= 0.75)
+    .sort((a, b) => a.start - b.start)
+
+const mergeSegments = (segments = [], duration = 0) => {
+  const sorted = normalizeSegments(segments, duration)
+  const merged = []
+
+  sorted.forEach((segment) => {
+    const previous = merged[merged.length - 1]
+    if (!previous || segment.start > previous.end + 0.5) {
+      merged.push({ ...segment })
+      return
+    }
+    previous.end = Math.max(previous.end, segment.end)
+  })
+
+  return merged
+}
+
+const sumSegments = (segments = []) =>
+  Math.round(segments.reduce((sum, segment) => sum + Math.max(0, segment.end - segment.start), 0))
+
 const makeQuiz = (lesson) => {
   const concepts = lesson.concepts?.length ? lesson.concepts : [lesson.title, lesson.chapter, lesson.subject]
   const mcqs = concepts.slice(0, 5).map((concept, index) => ({
@@ -248,21 +276,78 @@ export const programmingLearningService = {
       throw error
     }
 
+    const existing = await LessonProgress.findOne({ userId, lessonId }).lean()
+    const videoDuration = Math.max(existing?.videoDuration || 0, clamp(payload.videoDuration, 0, 100000))
+    const watchedSegments = mergeSegments([...(existing?.watchedSegments || []), ...(payload.watchedSegments || [])], videoDuration)
+    const uniqueWatchedSeconds = sumSegments(watchedSegments)
+    const computedWatchPercentage = videoDuration ? Math.min(100, Math.round((uniqueWatchedSeconds / videoDuration) * 100)) : 0
     const update = {
       userId,
       lessonId,
       subjectSlug: lesson.subjectSlug,
-      watchPercentage: clamp(payload.watchPercentage, 0, 100),
-      pauseCount: clamp(payload.pauseCount, 0, 999),
-      replayCount: clamp(payload.replayCount, 0, 999),
+      watchPercentage: Math.max(existing?.watchPercentage || 0, computedWatchPercentage),
+      pauseCount: Math.max(existing?.pauseCount || 0, clamp(payload.pauseCount, 0, 999)),
+      replayCount: Math.max(existing?.replayCount || 0, clamp(payload.replayCount, 0, 999)),
       playbackSpeed: clamp(payload.playbackSpeed || 1, 0.25, 2),
-      timeSpent: clamp(payload.timeSpent, 0, 100000),
-      completed: Boolean(payload.completed || payload.watchPercentage >= 90),
+      timeSpent: Math.max(existing?.timeSpent || 0, uniqueWatchedSeconds),
+      watchedSegments,
+      videoDuration,
+      completed: Boolean(existing?.completed || computedWatchPercentage >= 90),
       lastWatchedAt: new Date(),
     }
 
     const progress = await LessonProgress.findOneAndUpdate({ userId, lessonId }, update, { upsert: true, new: true })
     return { progress, recommendation: buildDecision({ lesson, progress }) }
+  },
+
+  async getDashboardAnalytics(userId) {
+    if (!isDbReady()) {
+      return {
+        summary: { lessonsStarted: 0, lessonsCompleted: 0, overallProgress: 0, totalWatchTime: 0, averageWatchPercentage: 0, pauseCount: 0, replayCount: 0 },
+        recentActivity: [],
+        perLessonProgress: [],
+      }
+    }
+
+    const progress = await LessonProgress.find({ userId }).sort({ lastWatchedAt: -1 }).populate('lessonId').lean()
+    const lessonsStarted = progress.length
+    const lessonsCompleted = progress.filter((item) => item.completed).length
+    const totalWatchTime = progress.reduce((sum, item) => sum + (item.timeSpent || 0), 0)
+    const averageWatchPercentage = lessonsStarted
+      ? Math.round(progress.reduce((sum, item) => sum + (item.watchPercentage || 0), 0) / lessonsStarted)
+      : 0
+    const pauseCount = progress.reduce((sum, item) => sum + (item.pauseCount || 0), 0)
+    const replayCount = progress.reduce((sum, item) => sum + (item.replayCount || 0), 0)
+
+    const perLessonProgress = progress.map((item) => ({
+      id: item._id,
+      lessonId: item.lessonId?._id || item.lessonId,
+      lessonTitle: item.lessonId?.title || 'Lesson',
+      subject: item.lessonId?.subject || item.subjectSlug,
+      watchPercentage: item.watchPercentage || 0,
+      pauseCount: item.pauseCount || 0,
+      replayCount: item.replayCount || 0,
+      timeSpent: item.timeSpent || 0,
+      videoDuration: item.videoDuration || 0,
+      watchedSegments: item.watchedSegments || [],
+      completed: Boolean(item.completed),
+      lastWatchedAt: item.lastWatchedAt,
+      updatedAt: item.updatedAt,
+    }))
+
+    return {
+      summary: {
+        lessonsStarted,
+        lessonsCompleted,
+        overallProgress: averageWatchPercentage,
+        totalWatchTime,
+        averageWatchPercentage,
+        pauseCount,
+        replayCount,
+      },
+      recentActivity: perLessonProgress.slice(0, 8),
+      perLessonProgress,
+    }
   },
 
   async submitQuiz(userId, lessonId, answers = []) {
@@ -356,4 +441,5 @@ export const programmingLearningService = {
       challenge: nextLesson ? `Build a tiny example using ${nextLesson.concepts?.[0] || nextLesson.title}.` : 'Complete a lesson to unlock a challenge.',
     }
   },
+
 }

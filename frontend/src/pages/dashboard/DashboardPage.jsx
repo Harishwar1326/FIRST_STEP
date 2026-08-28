@@ -1,5 +1,7 @@
 import { motion } from 'framer-motion'
+import { useQuery } from '@tanstack/react-query'
 import { ArrowRight, BookOpen, Brain, CheckCircle2, Compass, Leaf, Lightbulb, MapPin, Play, Sprout } from 'lucide-react'
+import { programmingLearningService } from '../../services/programmingLearningService'
 
 const trailStops = [
   {
@@ -43,7 +45,13 @@ const worlds = [
   ['Daily Mission Center', 'Small wins for exams, college, and real skills.', 'from-yellow-100 to-amber-100'],
 ]
 
+const secondsToMinutes = (seconds = 0) => `${Math.round((Number(seconds) || 0) / 60)} min`
+
 const DashboardPage = () => {
+  const analyticsQuery = useQuery({ queryKey: ['student-dashboard'], queryFn: programmingLearningService.getDashboard })
+  const summary = analyticsQuery.data?.summary || {}
+  const recentActivity = analyticsQuery.data?.recentActivity || []
+
   return (
     <div className="journey-page">
       <div className="absolute left-8 top-24 h-24 w-24 rounded-full bg-emerald-200/50 blur-2xl" />
@@ -126,6 +134,53 @@ const DashboardPage = () => {
               </div>
             </motion.a>
           ))}
+        </div>
+      </section>
+
+      <section className="relative mt-10">
+        <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+          <div>
+            <span className="story-label">My Progress</span>
+            <h2 className="mt-3 text-2xl font-black text-stone-950">Your learning analytics</h2>
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+          {[
+            ['Started', summary.lessonsStarted || 0],
+            ['Completed', summary.lessonsCompleted || 0],
+            ['Progress', `${summary.overallProgress || 0}%`],
+            ['Watch Time', secondsToMinutes(summary.totalWatchTime)],
+            ['Pauses', summary.pauseCount || 0],
+            ['Replays', summary.replayCount || 0],
+          ].map(([label, value]) => (
+            <div key={label} className="floating-island p-4">
+              <p className="text-2xl font-black text-stone-950">{value}</p>
+              <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-stone-500">{label}</p>
+            </div>
+          ))}
+        </div>
+        <div className="floating-island mt-5">
+          <h3 className="mb-4 text-xl font-black text-stone-950">Recent lesson activity</h3>
+          <div className="space-y-3">
+            {recentActivity.map((item) => (
+              <div key={item.id} className="rounded-[1.1rem] bg-white/70 p-4">
+                <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+                  <div>
+                    <p className="font-black text-stone-950">{item.lessonTitle}</p>
+                    <p className="text-sm font-semibold text-stone-500">{item.subject}</p>
+                  </div>
+                  <p className="font-black text-emerald-800">{item.watchPercentage}% watched</p>
+                </div>
+                <div className="mt-3 grid gap-2 text-sm font-semibold text-stone-600 sm:grid-cols-4">
+                  <span>{item.completed ? 'Completed' : 'In Progress'}</span>
+                  <span>{secondsToMinutes(item.timeSpent)}</span>
+                  <span>{item.pauseCount || 0} pauses</span>
+                  <span>{item.replayCount || 0} replays</span>
+                </div>
+              </div>
+            ))}
+            {!recentActivity.length ? <p className="font-bold text-stone-500">Save a lesson activity to start your dashboard.</p> : null}
+          </div>
         </div>
       </section>
 

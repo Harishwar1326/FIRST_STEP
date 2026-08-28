@@ -20,6 +20,17 @@ const lessonProgressSchema = new mongoose.Schema(
     replayCount: { type: Number, default: 0 },
     playbackSpeed: { type: Number, default: 1 },
     timeSpent: { type: Number, default: 0 },
+    watchedSegments: {
+      type: [
+        {
+          start: Number,
+          end: Number,
+          _id: false,
+        },
+      ],
+      default: [],
+    },
+    videoDuration: { type: Number, default: 0 },
     completed: { type: Boolean, default: false },
     lastWatchedAt: { type: Date, default: Date.now },
   },

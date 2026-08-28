@@ -94,6 +94,7 @@ export const notesService = {
       size: note.size,
       isFavorite: note.isFavorite,
       isBookmarked: note.isBookmarked,
+      noteType: note.noteType || 'document',
       summary: note.summary,
       keywords: note.keywords || [],
       concepts: note.concepts || [],
@@ -174,8 +175,41 @@ export const notesService = {
       difficulty: note.difficulty,
       estimatedStudyTime: note.estimatedStudyTime,
       status: note.status,
+      noteType: note.noteType || 'document',
       aiResults: note.aiResults,
     }
+  },
+
+  async getWhiteboards(userId) {
+    const notes = await notesRepository.findWhiteboards(userId)
+    return {
+      notes: notes.map(formatWhiteboard),
+    }
+  },
+
+  async createWhiteboard(userId, payload = {}) {
+    const title = cleanTitle(payload.title, 'Untitled Note')
+    const note = await notesRepository.createWhiteboard(userId, title)
+    return { note: formatWhiteboard(note) }
+  },
+
+  async getWhiteboard(noteId, userId) {
+    const note = await notesRepository.findWhiteboardById(noteId, userId)
+    if (!note) {
+      throw new Error('Note not found')
+    }
+
+    await notesRepository.markOpened(noteId, userId)
+    return { note: formatWhiteboard(note) }
+  },
+
+  async saveWhiteboard(noteId, userId, payload = {}) {
+    const note = await notesRepository.updateWhiteboardSnapshot(noteId, userId, payload.snapshot || null)
+    if (!note) {
+      throw new Error('Note not found')
+    }
+
+    return { note: formatWhiteboard(note), saved: true }
   },
 
   async updateNoteMetadata(noteId, userId, metadata) {
@@ -307,6 +341,21 @@ const normalizeTags = (tags) => {
 
   return [...new Set(values.map(tag => String(tag).trim()).filter(Boolean))]
 }
+
+const cleanTitle = (value, fallback) => {
+  const title = String(value || '').trim()
+  return title ? title.slice(0, 120) : fallback
+}
+
+const formatWhiteboard = (note) => ({
+  id: note._id,
+  title: note.title,
+  noteType: 'whiteboard',
+  snapshot: note.tldrawSnapshot || null,
+  createdAt: note.createdAt,
+  updatedAt: note.updatedAt,
+  lastOpenedAt: note.lastOpenedAt,
+})
 
 const buildLocalNoteAnalysis = async (filePath, mimeType) => {
   const fileBuffer = await fs.readFile(filePath)
