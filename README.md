@@ -67,13 +67,57 @@ docker-compose up --build
 Alternatively, you can run the components locally in separate terminals:
 
 ### 1. Express Backend
+
 ```bash
 cd backend
 npm install
 npm run dev
 ```
 
+## Production Deployment
+
+### Backend on Render
+
+Create a Render Web Service from this repository. Render can use the included `render.yaml`, or configure the service manually with:
+
+- Root Directory: `backend`
+- Build Command: `npm ci`
+- Start Command: `npm start`
+- Health Check Path: `/api/health`
+
+Set these environment variables in Render:
+
+```text
+NODE_ENV=production
+MONGO_URI=<MongoDB Atlas connection string>
+DATABASE_URL=<Neon or other PostgreSQL connection string>
+JWT_SECRET=<long random secret>
+CORS_ORIGINS=https://<your-vercel-domain>
+AI_SERVICE_URL=<public URL of the deployed AI service>
+ADMIN_EMAIL=<admin email>
+ADMIN_PASSWORD=<strong admin password>
+ADMIN_NAME=FirstStep Admin
+```
+
+`REDIS_URL` is optional. The AI service must be deployed separately and its public URL must be supplied as `AI_SERVICE_URL` if AI features are enabled.
+
+### Frontend on Vercel
+
+Create a Vercel project from this repository and set the Root Directory to `frontend`. Vercel detects Vite automatically:
+
+- Build Command: `npm run build`
+- Output Directory: `dist`
+
+Add this Vercel environment variable for the Production environment before deploying:
+
+```text
+VITE_API_URL=https://<your-backend>.onrender.com/api/v1
+```
+
+The frontend includes `frontend/vercel.json` so browser refreshes on application routes are handled by the SPA entry point. After the Vercel domain is known, set that exact URL in Render's `CORS_ORIGINS` and redeploy the backend.
+
 ### 2. FastAPI AI Service
+
 ```bash
 cd ai_service
 pip install -r requirements.txt
@@ -82,6 +126,7 @@ uvicorn main:app --reload --port 8000
 ```
 
 ### 3. React Frontend
+
 ```bash
 cd frontend
 npm install

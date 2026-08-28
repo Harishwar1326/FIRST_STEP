@@ -1,31 +1,39 @@
-import jwt from 'jsonwebtoken';
-import { userSqlRepository } from '../repositories/user.repository.sql.js';
+import jwt from "jsonwebtoken";
+import { userSqlRepository } from "../repositories/user.repository.sql.js";
+
+const getJwtSecret = () => {
+  if (!process.env.JWT_SECRET) {
+    throw new Error("JWT_SECRET is not configured");
+  }
+  return process.env.JWT_SECRET;
+};
 
 export const protect = async (req, res, next) => {
   let token;
 
   if (
     req.headers.authorization &&
-    req.headers.authorization.startsWith('Bearer')
+    req.headers.authorization.startsWith("Bearer")
   ) {
-    token = req.headers.authorization.split(' ')[1];
+    token = req.headers.authorization.split(" ")[1];
   }
 
   if (!token) {
     return res.status(401).json({
-      status: 'error',
-      message: 'Not authorized to access this resource. No token provided.'
+      status: "error",
+      message: "Not authorized to access this resource. No token provided.",
     });
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'development_only_secret_key_123_456_789');
-    
+    const decoded = jwt.verify(token, getJwtSecret());
+
     const user = await userSqlRepository.findById(decoded.id);
     if (!user) {
       return res.status(401).json({
-        status: 'error',
-        message: 'Not authorized to access this resource. User no longer exists.'
+        status: "error",
+        message:
+          "Not authorized to access this resource. User no longer exists.",
       });
     }
 
@@ -33,22 +41,23 @@ export const protect = async (req, res, next) => {
       id: user.id,
       email: user.email,
       name: user.name,
-      role: user.role || 'student',
+      role: user.role || "student",
     };
     next();
   } catch (error) {
     return res.status(401).json({
-      status: 'error',
-      message: 'Not authorized to access this resource. Token is invalid or expired.'
+      status: "error",
+      message:
+        "Not authorized to access this resource. Token is invalid or expired.",
     });
   }
 };
 
 export const requireAdmin = (req, res, next) => {
-  if (req.user?.role !== 'admin') {
+  if (req.user?.role !== "admin") {
     return res.status(403).json({
-      status: 'error',
-      message: 'Admin privileges are required for this resource.'
+      status: "error",
+      message: "Admin privileges are required for this resource.",
     });
   }
 

@@ -1,13 +1,11 @@
-import dotenv from "dotenv";
+import "dotenv/config";
 import app from "./src/app.js";
 import { connectDB } from "./src/config/database.js";
 import { connectPostgres } from "./src/config/postgres.js";
 import { authService } from "./src/services/auth.service.js";
 import { createClient } from "redis";
 
-dotenv.config();
-
-const PORT = process.env.PORT || 5000;
+const PORT = Number(process.env.PORT) || 5000;
 const REDIS_URL = process.env.REDIS_URL;
 
 // Initialize Redis client
@@ -55,7 +53,7 @@ const startServer = async () => {
   // Connect to Redis for caching (already non-blocking)
   await connectRedis();
 
-  app.listen(PORT, () => {
+  app.listen(PORT, "0.0.0.0", () => {
     console.log(
       `🚀 API Gateway running on port ${PORT} in ${process.env.NODE_ENV || "development"} mode`,
     );
