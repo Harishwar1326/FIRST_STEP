@@ -25,7 +25,7 @@ The platform follows a microservices architecture with three main components:
 - MongoDB for document storage
 - Redis for caching and session management
 
-### Frontend (React + Vite)
+### Frontend (React)
 - Modern React 18 with hooks and context API
 - TailwindCSS for responsive styling
 - React Router for navigation
