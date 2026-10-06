@@ -10,7 +10,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: MONGO_URI
-        sync: false
+        value: mongodb+srv://<harishwar1308_db_user>:vNYVqxjF1LeNu5cN@cluster0.71c3k6a.mongodb.net/firststep
       - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET
