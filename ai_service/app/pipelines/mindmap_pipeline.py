@@ -1,4 +1,5 @@
 import networkx as nx
+# pyrefly: ignore [missing-import]
 import spacy
 from typing import Dict, List
 import logging

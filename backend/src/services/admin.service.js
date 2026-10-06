@@ -1,6 +1,14 @@
 import mongoose from 'mongoose'
 import Lesson from '../models/lesson.model.js'
-import { LessonProgress } from '../models/programmingLearning.model.js'
+import { Quiz } from '../models/quiz.model.js'
+import { Task } from '../models/task.model.js'
+import {
+  LessonDrawing,
+  LessonFlashcard,
+  LessonProgress,
+  QuizResult,
+  SmartLessonNote,
+} from '../models/programmingLearning.model.js'
 import { userSqlRepository } from '../repositories/user.repository.sql.js'
 
 const isDbReady = () => mongoose.connection.readyState === 1
@@ -21,6 +29,76 @@ const summarizeProgress = (progress = []) => {
     pauseCount: progress.reduce((sum, item) => sum + (item.pauseCount || 0), 0),
     replayCount: progress.reduce((sum, item) => sum + (item.replayCount || 0), 0),
     lastActivity: progress[0]?.lastWatchedAt || null,
+  }
+}
+
+const slugify = (value = '') =>
+  String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+
+const formatLesson = (lesson) => {
+  const doc = lesson?.toObject ? lesson.toObject() : lesson
+  if (!doc) return null
+
+  return {
+    id: String(doc._id),
+    _id: doc._id,
+    class: doc.class,
+    subject: doc.subject,
+    subjectSlug: doc.subjectSlug || '',
+    chapter: doc.chapter,
+    title: doc.title,
+    content: doc.content,
+    difficulty: doc.difficulty,
+    estimatedStudyTime: doc.estimatedStudyTime,
+    prerequisites: doc.prerequisites || [],
+    order: doc.order ?? 0,
+    videoUrl: doc.videoUrl || '',
+    slug: doc.slug || '',
+    concepts: doc.concepts || [],
+    status: 'Active',
+    createdAt: doc.createdAt,
+    updatedAt: doc.updatedAt,
+  }
+}
+
+const normalizeLessonPayload = (payload = {}) => {
+  const title = String(payload.title || '').trim()
+  const content = String(payload.content || '').trim()
+  const subject = String(payload.subject || '').trim()
+  const chapter = String(payload.chapter || '').trim()
+  const className = String(payload.class || 'Programming MVP').trim()
+
+  if (!title || !content || !subject || !chapter || !className) {
+    const error = new Error('Title, subject, chapter, class, and content are required')
+    error.statusCode = 400
+    throw error
+  }
+
+  const order = Number(payload.order)
+  const estimatedStudyTime = Number(payload.estimatedStudyTime)
+
+  return {
+    class: className,
+    subject,
+    subjectSlug: String(payload.subjectSlug || '').trim() || slugify(subject),
+    chapter,
+    title,
+    content,
+    videoUrl: String(payload.videoUrl || '').trim(),
+    order: Number.isFinite(order) ? order : 0,
+    estimatedStudyTime: Number.isFinite(estimatedStudyTime) ? estimatedStudyTime : 15,
+    difficulty: payload.difficulty || 'Intermediate',
+    slug: String(payload.slug || '').trim() || slugify(title),
+    concepts: Array.isArray(payload.concepts)
+      ? payload.concepts.map((item) => String(item).trim()).filter(Boolean)
+      : undefined,
+    prerequisites: Array.isArray(payload.prerequisites)
+      ? payload.prerequisites.map((item) => String(item).trim()).filter(Boolean)
+      : undefined,
   }
 }
 
@@ -84,6 +162,85 @@ export const adminService = {
       students: students.map((student) => formatStudent(student, byUser.get(String(student.id)) || [])),
       total,
     }
+  },
+
+  async listLessons(filters = {}) {
+    if (!isDbReady()) {
+      return { lessons: [] }
+    }
+
+    const query = {}
+    if (filters.subject) {
+      query.subject = new RegExp(`^${String(filters.subject).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i')
+    }
+    if (filters.class) {
+      query.class = String(filters.class).trim()
+    }
+
+    const lessons = await Lesson.find(query).sort({ subject: 1, order: 1, title: 1 }).lean()
+    return { lessons: lessons.map(formatLesson) }
+  },
+
+  async createLesson(payload) {
+    if (!isDbReady()) {
+      const error = new Error('Lesson database is unavailable')
+      error.statusCode = 503
+      throw error
+    }
+
+    const data = normalizeLessonPayload(payload)
+    const lesson = await Lesson.create(data)
+    return { lesson: formatLesson(lesson) }
+  },
+
+  async updateLesson(lessonId, payload) {
+    if (!isDbReady()) {
+      const error = new Error('Lesson database is unavailable')
+      error.statusCode = 503
+      throw error
+    }
+
+    const data = normalizeLessonPayload(payload)
+    const lesson = await Lesson.findByIdAndUpdate(lessonId, data, {
+      new: true,
+      runValidators: true,
+    })
+
+    if (!lesson) {
+      const error = new Error('Lesson not found')
+      error.statusCode = 404
+      throw error
+    }
+
+    return { lesson: formatLesson(lesson) }
+  },
+
+  async deleteLesson(lessonId) {
+    if (!isDbReady()) {
+      const error = new Error('Lesson database is unavailable')
+      error.statusCode = 503
+      throw error
+    }
+
+    const lesson = await Lesson.findById(lessonId)
+    if (!lesson) {
+      const error = new Error('Lesson not found')
+      error.statusCode = 404
+      throw error
+    }
+
+    await Promise.all([
+      Quiz.deleteMany({ lessonId }),
+      Task.deleteMany({ lessonId }),
+      LessonProgress.deleteMany({ lessonId }),
+      QuizResult.deleteMany({ lessonId }),
+      SmartLessonNote.deleteMany({ lessonId }),
+      LessonDrawing.deleteMany({ lessonId }),
+      LessonFlashcard.deleteMany({ lessonId }),
+    ])
+
+    await Lesson.findByIdAndDelete(lessonId)
+    return { success: true, message: 'Lesson deleted successfully' }
   },
 
   async getStudentAnalytics(studentId) {

@@ -21,6 +21,25 @@ services:
     networks:
       - firststep_network
 
+  postgres:
+    image: postgres:16-alpine
+    container_name: firststep_postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=firststep
+      - POSTGRES_USER=firststep
+      - POSTGRES_PASSWORD=firststep
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U firststep -d firststep"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - firststep_network
+
   chromadb:
     image: chromadb/chroma:0.4.24
     container_name: firststep_chromadb
@@ -44,13 +63,19 @@ services:
     environment:
       - PORT=5000
       - MONGO_URI=mongodb://mongodb:27017/firststep
+      - DATABASE_URL=postgresql://firststep:firststep@postgres:5432/firststep
       - REDIS_URL=redis://redis:6379
       - AI_SERVICE_URL=http://ai-service:8000
       - JWT_SECRET=super_secret_firststep_development_jwt_key_123!
     depends_on:
-      - mongodb
-      - redis
-      - chromadb
+      mongodb:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      chromadb:
+        condition: service_started
     networks:
       - firststep_network
 
@@ -76,5 +101,6 @@ networks:
 
 volumes:
   mongodb_data:
+  postgres_data:
   redis_data:
   chromadb_data:

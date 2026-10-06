@@ -3,13 +3,15 @@ import Header from '../components/layout/Header'
 
 const MainLayout = ({ children }) => {
   return (
-    <div className="min-h-screen bg-transparent">
-      <Header />
-      <div className="mx-auto flex w-full max-w-[1480px] gap-5 px-3 pb-5 pt-3 sm:px-5 lg:px-6">
+    <div className="min-h-screen bg-app text-primary">
+      <div className="flex min-h-screen">
         <Sidebar />
-        <main className="min-w-0 flex-1">
-          {children}
-        </main>
+        <div className="min-w-0 flex-1 pb-20 lg:pb-0">
+          <Header />
+          <main className="mx-auto w-full max-w-[1500px] px-4 py-4 sm:px-6 lg:px-8">
+            {children}
+          </main>
+        </div>
       </div>
     </div>
   )

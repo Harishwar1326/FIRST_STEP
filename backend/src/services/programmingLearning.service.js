@@ -14,6 +14,194 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, Number(value) || 
 
 const isDbReady = () => mongoose.connection.readyState === 1
 
+const dayKey = (value) => {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  date.setHours(0, 0, 0, 0)
+  return date.getTime()
+}
+
+const collectActivityDayKeys = (progress = [], quizResults = []) => {
+  const days = new Set()
+  progress.forEach((item) => {
+    const key = dayKey(item.lastWatchedAt || item.updatedAt)
+    if (key) days.add(key)
+  })
+  quizResults.forEach((item) => {
+    const key = dayKey(item.createdAt)
+    if (key) days.add(key)
+  })
+  return days
+}
+
+const calculateLearningStreak = (progress = [], quizResults = []) => {
+  const activityDays = collectActivityDayKeys(progress, quizResults)
+  if (!activityDays.size) return 0
+
+  const oneDayMs = 24 * 60 * 60 * 1000
+  const todayKey = dayKey(new Date())
+  let cursor = activityDays.has(todayKey) ? todayKey : todayKey - oneDayMs
+  if (!activityDays.has(cursor)) return 0
+
+  let streak = 0
+  while (activityDays.has(cursor)) {
+    streak += 1
+    cursor -= oneDayMs
+  }
+  return streak
+}
+
+const summarizeQuizPerformance = (results = [], lessonTitleById = new Map()) => {
+  if (!results.length) {
+    return {
+      averageScore: 0,
+      bestScore: 0,
+      quizzesCompleted: 0,
+      recent: [],
+    }
+  }
+
+  const scores = results.map((item) => Number(item.score) || 0)
+  const averageScore = Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length)
+  const bestScore = Math.max(...scores)
+
+  const recent = results
+    .slice()
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, 6)
+    .map((item, index) => ({
+      id: String(item._id),
+      label: `Quiz ${results.length - index}`,
+      lessonTitle: lessonTitleById.get(String(item.lessonId)) || 'Lesson quiz',
+      score: Number(item.score) || 0,
+      correctCount: Number(item.correctCount) || 0,
+      totalQuestions: Number(item.totalQuestions) || 0,
+      createdAt: item.createdAt,
+    }))
+
+  return {
+    averageScore,
+    bestScore,
+    quizzesCompleted: results.length,
+    recent,
+  }
+}
+
+const buildSubjectProgress = (subjects = [], lessons = [], progressByLesson = new Map()) =>
+  subjects.map((subject) => {
+    const subjectLessons = lessons.filter((lesson) => lesson.subjectSlug === subject.slug)
+    const totalLessons = subjectLessons.length
+    if (!totalLessons) {
+      return {
+        slug: subject.slug,
+        title: subject.title,
+        progressPercent: 0,
+        lessonsCompleted: 0,
+        lessonsTotal: 0,
+      }
+    }
+
+    let progressSum = 0
+    let lessonsCompleted = 0
+    subjectLessons.forEach((lesson) => {
+      const lessonProgress = progressByLesson.get(String(lesson._id))
+      if (lessonProgress?.completed) {
+        lessonsCompleted += 1
+        progressSum += 100
+      } else if (lessonProgress) {
+        progressSum += lessonProgress.watchPercentage || 0
+      }
+    })
+
+    return {
+      slug: subject.slug,
+      title: subject.title,
+      progressPercent: Math.round(progressSum / totalLessons),
+      lessonsCompleted,
+      lessonsTotal: totalLessons,
+    }
+  })
+
+const buildRecentLearningActivity = (progress = [], quizResults = [], lessonTitleById = new Map()) => {
+  const events = []
+
+  progress.forEach((item) => {
+    const lessonId = String(item.lessonId?._id || item.lessonId)
+    const lessonTitle = item.lessonId?.title || lessonTitleById.get(lessonId) || 'Lesson'
+    const subject = item.lessonId?.subject || item.subjectSlug || 'Programming'
+    const timestamp = item.lastWatchedAt || item.updatedAt
+
+    if (item.completed) {
+      events.push({
+        id: `completed-${item._id}`,
+        type: 'completed',
+        label: `Completed ${lessonTitle}`,
+        subject,
+        timestamp,
+      })
+    } else if ((item.watchPercentage || 0) > 0) {
+      events.push({
+        id: `watched-${item._id}`,
+        type: item.watchPercentage >= 90 ? 'watched' : 'started',
+        label: item.watchPercentage >= 90 ? `Watched ${lessonTitle}` : `Started ${lessonTitle}`,
+        subject,
+        timestamp,
+      })
+    }
+  })
+
+  quizResults.forEach((item) => {
+    const lessonTitle = lessonTitleById.get(String(item.lessonId)) || 'Lesson'
+    const total = Number(item.totalQuestions) || 0
+    const correct = Number(item.correctCount) || 0
+    const scoreLabel = total ? `${correct}/${total}` : `${Number(item.score) || 0}%`
+    events.push({
+      id: `quiz-${item._id}`,
+      type: 'quiz',
+      label: `Quiz completed — ${scoreLabel}`,
+      subject: lessonTitle,
+      timestamp: item.createdAt,
+    })
+  })
+
+  return events
+    .filter((event) => event.timestamp)
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+    .slice(0, 10)
+}
+
+const buildContinueLearning = (progress = [], recommendedLesson = null) => {
+  const inProgress = progress
+    .filter((item) => !item.completed && (item.watchPercentage || 0) > 0)
+    .sort((a, b) => new Date(b.lastWatchedAt) - new Date(a.lastWatchedAt))[0]
+
+  if (inProgress) {
+    const lesson = inProgress.lessonId
+    const lessonId = String(lesson?._id || inProgress.lessonId)
+    return {
+      lessonId,
+      title: lesson?.title || 'Lesson',
+      subject: lesson?.subject || inProgress.subjectSlug || 'Programming',
+      watchPercentage: inProgress.watchPercentage || 0,
+      completed: false,
+    }
+  }
+
+  if (recommendedLesson) {
+    const lessonId = String(recommendedLesson._id || recommendedLesson.id)
+    return {
+      lessonId,
+      title: recommendedLesson.title || 'Lesson',
+      subject: recommendedLesson.subject || recommendedLesson.subjectTitle || 'Programming',
+      watchPercentage: recommendedLesson.progress?.watchPercentage || 0,
+      completed: false,
+    }
+  }
+
+  return null
+}
+
 const normalizeSegments = (segments = [], duration = 0) =>
   segments
     .map((segment) => ({
@@ -230,7 +418,7 @@ export const programmingLearningService = {
       progress: {
         completedLessons: progress.filter((item) => item.completed).length,
         averageScore: results.length ? Math.round(results.reduce((sum, item) => sum + item.score, 0) / results.length) : 0,
-        studyStreak: Math.min(14, progress.length),
+        studyStreak: calculateLearningStreak(progress, results),
       },
     }
   },
@@ -303,13 +491,41 @@ export const programmingLearningService = {
   async getDashboardAnalytics(userId) {
     if (!isDbReady()) {
       return {
+        overview: {
+          overallProgress: 0,
+          lessonsCompleted: 0,
+          averageQuizScore: 0,
+          currentStreak: 0,
+        },
         summary: { lessonsStarted: 0, lessonsCompleted: 0, overallProgress: 0, totalWatchTime: 0, averageWatchPercentage: 0, pauseCount: 0, replayCount: 0 },
+        subjects: [],
         recentActivity: [],
+        recentLearningActivity: [],
+        quizPerformance: {
+          averageScore: 0,
+          bestScore: 0,
+          quizzesCompleted: 0,
+          recent: [],
+        },
+        continueLearning: null,
+        recommendation: null,
+        weakConcepts: [],
         perLessonProgress: [],
       }
     }
 
-    const progress = await LessonProgress.find({ userId }).sort({ lastWatchedAt: -1 }).populate('lessonId').lean()
+    await this.seed()
+
+    const [progress, quizResults, subjects, lessons] = await Promise.all([
+      LessonProgress.find({ userId }).sort({ lastWatchedAt: -1 }).populate('lessonId').lean(),
+      QuizResult.find({ userId }).sort({ createdAt: -1 }).lean(),
+      ProgrammingSubject.find().lean(),
+      Lesson.find({ class: 'Programming MVP' }).sort({ subject: 1, order: 1 }).lean(),
+    ])
+
+    const lessonTitleById = new Map(lessons.map((lesson) => [String(lesson._id), lesson.title]))
+    const progressByLesson = new Map(progress.map((item) => [String(item.lessonId?._id || item.lessonId), item]))
+
     const lessonsStarted = progress.length
     const lessonsCompleted = progress.filter((item) => item.completed).length
     const totalWatchTime = progress.reduce((sum, item) => sum + (item.timeSpent || 0), 0)
@@ -318,6 +534,25 @@ export const programmingLearningService = {
       : 0
     const pauseCount = progress.reduce((sum, item) => sum + (item.pauseCount || 0), 0)
     const replayCount = progress.reduce((sum, item) => sum + (item.replayCount || 0), 0)
+    const currentStreak = calculateLearningStreak(progress, quizResults)
+    const quizPerformance = summarizeQuizPerformance(quizResults, lessonTitleById)
+    const subjectProgress = buildSubjectProgress(subjects, lessons, progressByLesson)
+    const recentLearningActivity = buildRecentLearningActivity(progress, quizResults, lessonTitleById)
+
+    const recommendations = await this.getRecommendations(userId)
+    const continueLearning = buildContinueLearning(progress, recommendations.recommendedLesson)
+    const weakConcepts = [...new Set(quizResults.flatMap((item) => item.weakConcepts || []).filter(Boolean))].slice(0, 8)
+
+    const recommendation = recommendations.recommendedLesson
+      ? {
+          lessonId: String(recommendations.recommendedLesson._id || recommendations.recommendedLesson.id),
+          title: recommendations.recommendedLesson.title,
+          subject: recommendations.recommendedLesson.subject || recommendations.recommendedLesson.subjectTitle,
+          reason: recommendations.revision?.length
+            ? 'Based on your recent quiz performance and weak concepts.'
+            : recommendations.todayMission || 'Continue your learning path with the next lesson.',
+        }
+      : null
 
     const perLessonProgress = progress.map((item) => ({
       id: item._id,
@@ -336,6 +571,12 @@ export const programmingLearningService = {
     }))
 
     return {
+      overview: {
+        overallProgress: averageWatchPercentage,
+        lessonsCompleted,
+        averageQuizScore: quizPerformance.averageScore,
+        currentStreak,
+      },
       summary: {
         lessonsStarted,
         lessonsCompleted,
@@ -345,7 +586,13 @@ export const programmingLearningService = {
         pauseCount,
         replayCount,
       },
+      subjects: subjectProgress,
       recentActivity: perLessonProgress.slice(0, 8),
+      recentLearningActivity,
+      quizPerformance,
+      continueLearning,
+      recommendation,
+      weakConcepts,
       perLessonProgress,
     }
   },

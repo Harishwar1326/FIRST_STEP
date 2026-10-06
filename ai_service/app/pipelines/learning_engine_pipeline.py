@@ -1,13 +1,19 @@
 import logging
 import random
-import spacy
+try:
+    import spacy
+except ImportError:
+    spacy = None
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 import numpy as np
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
-import google.generativeai as genai
+try:
+    import google.generativeai as genai
+except ImportError:
+    genai = None
 from app.core.config import settings
 
 logger = logging.getLogger("ai_service")
@@ -15,15 +21,16 @@ logger = logging.getLogger("ai_service")
 class LearningEnginePipeline:
     def __init__(self):
         # Initialize spaCy
-        try:
-            self.nlp = spacy.load("en_core_web_sm")
-        except Exception as e:
-            logger.error(f"Failed to load spaCy inside LearningEnginePipeline: {str(e)}")
-            self.nlp = None
+        self.nlp = None
+        if spacy is not None:
+            try:
+                self.nlp = spacy.load("en_core_web_sm")
+            except Exception as e:
+                logger.error(f"Failed to load spaCy inside LearningEnginePipeline: {str(e)}")
 
         # Try to initialize Gemini
         self.gemini_enabled = False
-        if settings.GEMINI_API_KEY:
+        if genai is not None and settings.GEMINI_API_KEY:
             try:
                 genai.configure(api_key=settings.GEMINI_API_KEY)
                 self.gemini_enabled = True
@@ -31,17 +38,40 @@ class LearningEnginePipeline:
             except Exception as e:
                 logger.error(f"Failed to configure Gemini API: {str(e)}")
 
-        # Initialize and train the ML models on synthetic data
+        # Initialize and train/load the ML models
         self._initialize_and_train_models()
 
     def _initialize_and_train_models(self):
-        """Train models on seed data during startup for deterministic and realistic predictions"""
+        """Load trained model artifacts from dataset pipeline or fallback to seed data training."""
+        import joblib
+        from pathlib import Path
+
+        base_data_dir = Path(__file__).resolve().parent.parent.parent / "data" / "models"
+        mastery_path = base_data_dir / "mastery_model.joblib"
+        retention_path = base_data_dir / "retention_model.joblib"
+        style_path = base_data_dir / "style_model.joblib"
+        diff_path = base_data_dir / "diff_model.joblib"
+
+        self.style_classes = ['Visual', 'Text', 'Practice-Oriented', 'Mixed']
+        self.diff_classes = ['Easy', 'Medium', 'Advanced']
+
+        if mastery_path.exists() and retention_path.exists() and style_path.exists() and diff_path.exists():
+            try:
+                logger.info("Loading trained ML model artifacts from ai_service/data/models/...")
+                self.mastery_model = joblib.load(mastery_path)
+                self.retention_model = joblib.load(retention_path)
+                self.style_model = joblib.load(style_path)
+                self.diff_model = joblib.load(diff_path)
+                logger.info("Trained ML model artifacts loaded successfully into LearningEnginePipeline!")
+                return
+            except Exception as e:
+                logger.error(f"Failed to load trained model artifacts: {str(e)}. Falling back to synthetic seed training.")
+
         logger.info("Training Scikit-Learn models on synthetic learning history...")
         np.random.seed(42)
         n_samples = 150
 
         # 1. Knowledge Mastery Prediction (RandomForestRegressor)
-        # Inputs: [QuizScore (0-100), TaskCompletion (0-1), StudyTime (min), RevisionCount]
         X_mastery = []
         y_mastery = []
         for _ in range(n_samples):
@@ -49,7 +79,6 @@ class LearningEnginePipeline:
             task = np.random.uniform(0.1, 1.0)
             time = np.random.uniform(5, 60)
             revisions = np.random.randint(0, 5)
-            # Mastery increases with quiz score, task completion, study time, and revisions
             mastery = (quiz * 0.5) + (task * 20) + (min(time, 30) * 0.5) + (revisions * 4)
             mastery = min(100, max(0, mastery + np.random.normal(0, 3)))
             X_mastery.append([quiz, task, time, revisions])
@@ -59,15 +88,13 @@ class LearningEnginePipeline:
         self.mastery_model.fit(X_mastery, y_mastery)
 
         # 2. Retention Prediction (LogisticRegression)
-        # Inputs: [StudyTime (min), RevisionCount, DaysSinceLastRevision, QuizAccuracy (0-1)]
         X_retention = []
-        y_retention = [] # Binary: 1 = retained, 0 = forgotten
+        y_retention = []
         for _ in range(n_samples):
             time = np.random.uniform(5, 60)
             revisions = np.random.randint(0, 5)
             days_since = np.random.uniform(0, 30)
             accuracy = np.random.uniform(0.3, 1.0)
-            # Probability of retention score
             score = (accuracy * 4.0) + (revisions * 0.8) + (min(time, 30) * 0.05) - (days_since * 0.25)
             retained = 1 if score > 1.5 else 0
             X_retention.append([time, revisions, days_since, accuracy])
@@ -77,8 +104,6 @@ class LearningEnginePipeline:
         self.retention_model.fit(X_retention, y_retention)
 
         # 3. Learning Style Classification (RandomForestClassifier)
-        # Inputs: [ReadingSpeed (WPM), DrawingActivity (strokes), VideoDurationRatio (0-1), NotesLength (chars)]
-        # Classes: 0: Visual, 1: Text, 2: Practice-Oriented, 3: Mixed
         X_style = []
         y_style = []
         for _ in range(n_samples):
@@ -87,26 +112,22 @@ class LearningEnginePipeline:
             video_ratio = np.random.uniform(0, 1)
             notes_len = np.random.randint(0, 1000)
 
-            # Assign labels based on dominant activity
             if strokes > 50 and video_ratio > 0.5:
-                style = 0 # Visual
+                style = 0
             elif notes_len > 400 and strokes < 10:
-                style = 1 # Text
+                style = 1
             elif strokes > 20 and speed > 180:
-                style = 2 # Practice-Oriented
+                style = 2
             else:
-                style = 3 # Mixed
+                style = 3
 
             X_style.append([speed, strokes, video_ratio, notes_len])
             y_style.append(style)
 
         self.style_model = RandomForestClassifier(n_estimators=20, random_state=42)
         self.style_model.fit(X_style, y_style)
-        self.style_classes = ['Visual', 'Text', 'Practice-Oriented', 'Mixed']
 
         # 4. Next Lesson Difficulty Prediction (DecisionTreeClassifier)
-        # Inputs: [CurrentMastery (0-100), PrevQuizScore (0-100), ConfidenceLevel (1-5)]
-        # Classes: 0: Easy, 1: Medium, 2: Advanced
         X_diff = []
         y_diff = []
         for _ in range(n_samples):
@@ -115,18 +136,17 @@ class LearningEnginePipeline:
             conf = np.random.randint(1, 6)
 
             if mastery > 75 and quiz > 80:
-                diff = 2 # Advanced
+                diff = 2
             elif mastery > 45:
-                diff = 1 # Medium
+                diff = 1
             else:
-                diff = 0 # Easy
+                diff = 0
 
             X_diff.append([mastery, quiz, conf])
             y_diff.append(diff)
 
         self.diff_model = DecisionTreeClassifier(max_depth=4, random_state=42)
         self.diff_model.fit(X_diff, y_diff)
-        self.diff_classes = ['Easy', 'Medium', 'Advanced']
 
         logger.info("Scikit-Learn ML models trained successfully!")
 

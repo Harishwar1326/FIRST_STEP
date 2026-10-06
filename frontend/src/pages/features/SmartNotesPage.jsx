@@ -226,7 +226,7 @@ const SmartNotesPage = () => {
   const counts = libraryMeta?.counts || { total: notes.length, favorites: 0, bookmarks: 0, processing: 0 }
 
   return (
-    <div className="world-page bg-[linear-gradient(135deg,#fff7e6_0%,#eef9ee_48%,#e9f4ff_100%)]">
+    <div className="world-page redesign-surface">
       <div className="relative">
         <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>

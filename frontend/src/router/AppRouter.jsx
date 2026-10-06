@@ -13,8 +13,10 @@ import LearningAcademyPage from '../pages/features/LearningAcademyPage'
 import KnowledgeForestPage from '../pages/features/KnowledgeForestPage'
 import ThinkingLabPage from '../pages/features/ThinkingLabPage'
 import ProgrammingLearningPage from '../pages/features/ProgrammingLearningPage'
+import LearningAssessmentPage from '../pages/features/LearningAssessmentPage'
 import NotFoundPage from '../pages/NotFoundPage'
 import AdminDashboardPage from '../pages/admin/AdminDashboardPage'
+import AdminContentPage from '../pages/admin/AdminContentPage'
 import AdminStudentDetailPage from '../pages/admin/AdminStudentDetailPage'
 
 // Protected Route Component
@@ -108,10 +110,26 @@ const AppRouter = () => {
         </ProtectedRoute>
       }/>
 
+      <Route path="/learning-assessment" element={
+        <ProtectedRoute>
+          <MainLayout>
+            <LearningAssessmentPage />
+          </MainLayout>
+        </ProtectedRoute>
+      }/>
+
       <Route path="/admin" element={
         <ProtectedRoute roles={['admin']}>
           <MainLayout>
             <AdminDashboardPage />
+          </MainLayout>
+        </ProtectedRoute>
+      }/>
+
+      <Route path="/admin/content" element={
+        <ProtectedRoute roles={['admin']}>
+          <MainLayout>
+            <AdminContentPage />
           </MainLayout>
         </ProtectedRoute>
       }/>

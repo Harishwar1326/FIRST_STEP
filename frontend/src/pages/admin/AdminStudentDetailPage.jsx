@@ -2,6 +2,12 @@ import { useQuery } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import { Activity, Clock, Pause, Repeat, Timer, Trophy } from 'lucide-react'
 import { adminService } from '../../services/adminService'
+import Badge from '../../components/ui/Badge'
+import Card from '../../components/ui/Card'
+import EmptyState from '../../components/ui/EmptyState'
+import ProgressBar from '../../components/ui/ProgressBar'
+
+const secondsToMinutes = (seconds = 0) => `${Math.round((Number(seconds) || 0) / 60)} min`
 
 const AdminStudentDetailPage = () => {
   const { id } = useParams()
@@ -10,14 +16,16 @@ const AdminStudentDetailPage = () => {
   const summary = data?.summary || {}
 
   return (
-    <div className="world-page bg-[linear-gradient(135deg,#fff7ed_0%,#ecfeff_48%,#f7fee7_100%)]">
-      <section className="floating-island">
-        <span className="story-label">Student Detail</span>
-        <h1 className="mt-3 text-4xl font-black text-stone-950">{data?.student?.name || 'Loading student...'}</h1>
-        <p className="mt-2 font-semibold text-stone-600">{data?.student?.email}</p>
-      </section>
+    <div className="world-page">
+      <Card className="p-6 sm:p-8">
+        <Badge tone="accent">Student Detail</Badge>
+        <h1 className="mt-4 font-display text-4xl font-black leading-none tracking-tight text-primary sm:text-6xl">
+          {data?.student?.name || 'Loading student...'}
+        </h1>
+        <p className="mt-3 font-semibold text-secondary">{data?.student?.email}</p>
+      </Card>
 
-      <section className="mt-6 grid gap-4 md:grid-cols-6">
+      <section className="mt-6 grid gap-4 md:grid-cols-3 xl:grid-cols-6">
         {[
           ['Started', summary.lessonsStarted || 0, Activity],
           ['Completed', summary.lessonsCompleted || 0, Trophy],
@@ -26,30 +34,31 @@ const AdminStudentDetailPage = () => {
           ['Replays', summary.replayCount || 0, Repeat],
           ['Time Watched', secondsToMinutes(summary.totalWatchTime), Timer],
         ].map(([label, value, Icon]) => (
-          <div key={label} className="floating-island p-4">
-            <Icon size={20} className="text-orange-700" />
-            <p className="mt-3 text-2xl font-black text-stone-950">{value}</p>
-            <p className="text-xs font-bold uppercase tracking-[0.12em] text-stone-500">{label}</p>
-          </div>
+          <Card key={label} className="p-4">
+            <Icon size={20} className="text-accent" strokeWidth={1.5} />
+            <p className="mt-3 font-display text-2xl font-black text-primary">{value}</p>
+            <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">{label}</p>
+          </Card>
         ))}
       </section>
 
-      <section className="floating-island mt-6">
+      <Card className="mt-6 p-5">
         <div className="mb-4 flex items-center gap-2">
-          <Clock size={20} />
-          <h2 className="text-2xl font-black text-stone-950">Per-lesson progress</h2>
+          <Clock size={20} className="text-accent" strokeWidth={1.5} />
+          <h2 className="font-display text-2xl font-black text-primary">Per-lesson progress</h2>
         </div>
         <div className="space-y-3">
           {(data?.perLessonProgress || []).map((item) => (
-            <div key={item.id} className="rounded-[1.2rem] bg-white/70 p-4">
+            <div key={item.id} className="rounded-2xl border border-app bg-elevated p-4">
               <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
-                <div>
-                  <p className="font-black text-stone-950">{item.lessonTitle}</p>
-                  <p className="text-sm font-semibold text-stone-500">{item.subject}</p>
+                <div className="min-w-0">
+                  <p className="truncate font-black text-primary">{item.lessonTitle}</p>
+                  <p className="text-sm font-semibold text-secondary">{item.subject}</p>
                 </div>
-                <p className="font-black text-emerald-800">{item.watchPercentage}% watched</p>
+                <p className="font-black text-primary">{item.watchPercentage}% watched</p>
               </div>
-              <div className="mt-3 grid gap-2 text-sm font-semibold text-stone-600 sm:grid-cols-4">
+              <ProgressBar value={item.watchPercentage || 0} className="mt-3" />
+              <div className="mt-3 grid gap-2 text-sm font-semibold text-secondary sm:grid-cols-4">
                 <span>{item.completed ? 'Completed' : 'In progress'}</span>
                 <span>{secondsToMinutes(item.timeSpent)}</span>
                 <span>{item.pauseCount || 0} pauses</span>
@@ -57,13 +66,11 @@ const AdminStudentDetailPage = () => {
               </div>
             </div>
           ))}
-          {!data?.perLessonProgress?.length ? <p className="font-bold text-stone-500">No lesson activity yet.</p> : null}
+          {!data?.perLessonProgress?.length ? <EmptyState title="No lesson activity yet" message="This student has not started tracked programming lessons yet." /> : null}
         </div>
-      </section>
+      </Card>
     </div>
   )
 }
-
-const secondsToMinutes = (seconds = 0) => `${Math.round((Number(seconds) || 0) / 60)} min`
 
 export default AdminStudentDetailPage

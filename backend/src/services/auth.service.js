@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { userSqlRepository } from "../repositories/user.repository.sql.js";
 import { aiServiceClient } from "../utils/aiServiceClient.js";
+import { activityService } from "./activity.service.js";
 
 const getJwtSecret = () => {
   if (!process.env.JWT_SECRET) {
@@ -33,7 +34,9 @@ export const authService = {
     // Check if user already exists in PostgreSQL
     const existingUser = await userSqlRepository.findByEmail(email);
     if (existingUser) {
-      throw new Error("User already exists");
+      const error = new Error("User already exists with this email address");
+      error.statusCode = 400;
+      throw error;
     }
 
     // Create user in PostgreSQL (password hashing handled in repository)
@@ -45,6 +48,17 @@ export const authService = {
     });
 
     const token = signToken(user);
+
+    // Record activity event and create Admin notification synchronously before returning response
+    try {
+      await activityService.recordActivityAndNotifyAdmin({
+        type: "register",
+        user,
+        action: "Created a new student account",
+      });
+    } catch (err) {
+      console.error("Activity logging error:", err);
+    }
 
     // Initialize Learning Twin in AI service
     try {
@@ -66,21 +80,38 @@ export const authService = {
     // Find user in PostgreSQL
     const user = await userSqlRepository.findByEmail(email);
     if (!user) {
-      throw new Error("Invalid credentials");
+      const error = new Error("Invalid email or password");
+      error.statusCode = 401;
+      throw error;
     }
 
     // Verify password
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
-      throw new Error("Invalid credentials");
+      const error = new Error("Invalid email or password");
+      error.statusCode = 401;
+      throw error;
     }
 
     const activeUser = await userSqlRepository.markActive(user.id);
-    const token = signToken(activeUser || user);
+    const finalUser = activeUser || user;
+
+    // Record activity event and create Admin notification synchronously before returning response
+    try {
+      await activityService.recordActivityAndNotifyAdmin({
+        type: "login",
+        user: finalUser,
+        action: `${finalUser.role === 'admin' ? 'Admin' : 'Student'} logged into FirstStep platform`,
+      });
+    } catch (err) {
+      console.error("Activity logging error:", err);
+    }
+
+    const token = signToken(finalUser);
 
     return {
       token,
-      user: publicUser(activeUser || user),
+      user: publicUser(finalUser),
     };
   },
 

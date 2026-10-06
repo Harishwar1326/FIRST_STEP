@@ -8,10 +8,15 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Inter', 'Outfit', 'sans-serif'],
-        display: ['Outfit', 'sans-serif'],
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        display: ['Space Grotesk', 'Sora', 'Inter', 'system-ui', 'sans-serif'],
       },
       colors: {
+        accent: {
+          DEFAULT: '#7C5CFF',
+          strong: '#6B46FF',
+        },
+        success: '#C6F432',
         brand: {
           50: '#f5f3ff',
           100: '#ede9fe',

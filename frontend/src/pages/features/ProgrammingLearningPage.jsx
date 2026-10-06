@@ -403,7 +403,7 @@ const ProgrammingLearningPage = () => {
   }, [capturePlaybackTick, lesson?.videoUrl, syncTracking, updateMetricsFromTracker])
 
   return (
-    <div className="world-page bg-[linear-gradient(135deg,#fff7ed_0%,#ecfeff_48%,#f7fee7_100%)]">
+    <div className="world-page redesign-surface">
       <section className="grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
           <span className="story-label">

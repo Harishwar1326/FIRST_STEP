@@ -33,8 +33,9 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// Mount all modular routes
+// Mount all modular routes (supports /api/v1 and /api)
 app.use("/api/v1", rootRouter);
+app.use("/api", rootRouter);
 
 // Catch-all 404 Route
 app.use((req, res, next) => {

@@ -1,5 +1,6 @@
 import { academyRepository } from '../repositories/academy.repository.js'
 import { aiServiceClient } from '../utils/aiServiceClient.js'
+import { studyTechniqueEngineService } from './studyTechniqueEngine.service.js'
 
 export const academyService = {
   async getStudyPlan(userId) {
@@ -99,11 +100,48 @@ export const academyService = {
   },
 
   async getTechniqueRecommendation(userId, subject) {
-    const response = await aiServiceClient.post('/academy/technique/recommend', {
-      userId,
-      subject,
-    })
+    try {
+      const response = await aiServiceClient.post('/academy/technique/recommend', {
+        userId,
+        subject,
+      })
+      if (response.data && response.data.recommendedTechnique) {
+        return response.data
+      }
+    } catch (err) {
+      console.warn('AI service technique recommend fallback to local engine:', err.message)
+    }
 
-    return response.data
+    return await studyTechniqueEngineService.generateRecommendation(userId)
   },
+
+  async evaluateSituation(userId, situationInputs) {
+    return await studyTechniqueEngineService.evaluateSituation(userId, situationInputs)
+  },
+
+  async saveTechniqueFeedback(userId, feedbackData) {
+    return await studyTechniqueEngineService.saveTechniqueFeedback(userId, feedbackData)
+  },
+
+  async getStudentProfile(userId) {
+    return await studyTechniqueEngineService.calculateStudentProfile(userId)
+  },
+
+  getTechniquesCatalog() {
+    return studyTechniqueEngineService.getTechniquesCatalog()
+  },
+
+  getTechniqueById(techniqueId) {
+    return studyTechniqueEngineService.getTechniqueById(techniqueId)
+  },
+
+  async recordTechniqueSession(userId, sessionData) {
+    return await studyTechniqueEngineService.recordTechniqueSession(userId, sessionData)
+  },
+
+  async getStudentTechniqueProgress(userId) {
+    return await studyTechniqueEngineService.getStudentTechniqueProgress(userId)
+  }
 }
+
+

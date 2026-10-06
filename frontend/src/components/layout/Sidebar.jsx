@@ -2,90 +2,118 @@ import { NavLink } from 'react-router-dom'
 import {
   BookOpen,
   Brain,
+  Code2,
   FlaskConical,
   GraduationCap,
-  Code2,
+  Home,
   Leaf,
+  Sparkles,
   LogOut,
-  Map,
-  Palette
+  Moon,
+  Palette,
+  Sun,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 
 const navItems = [
-  { path: '/', icon: Map, label: 'Today Trail', tone: 'from-amber-200 to-orange-200' },
-  { path: '/programming-learning', icon: Code2, label: 'Code Lessons', tone: 'from-cyan-200 to-lime-100' },
-  { path: '/smart-notes', icon: Palette, label: 'Notes Studio', tone: 'from-pink-200 to-amber-100' },
-  { path: '/learning-twin', icon: Brain, label: 'Mentor Twin', tone: 'from-sky-200 to-indigo-100' },
-  { path: '/learning-academy', icon: GraduationCap, label: 'Mission Center', tone: 'from-yellow-200 to-lime-100' },
-  { path: '/knowledge-forest', icon: Leaf, label: 'Knowledge Garden', tone: 'from-emerald-200 to-teal-100' },
-  { path: '/thinking-lab', icon: FlaskConical, label: 'Challenge Zone', tone: 'from-violet-200 to-rose-100' },
+  { path: '/', icon: Home, label: 'Home' },
+  { path: '/smart-notes', icon: Palette, label: 'Smart Notes' },
+  { path: '/learning-assessment', icon: Sparkles, label: 'Learning Profile' },
+  { path: '/learning-twin', icon: Brain, label: 'Learning Twin' },
+  { path: '/learning-academy', icon: GraduationCap, label: 'Learning Academy' },
+  { path: '/knowledge-forest', icon: Leaf, label: 'Knowledge Forest' },
+  { path: '/thinking-lab', icon: FlaskConical, label: 'Thinking Lab' },
+  { path: '/programming-learning', icon: Code2, label: 'Programming' },
 ]
 
 const adminNavItems = [
-  { path: '/admin', icon: Map, label: 'Admin Dashboard', tone: 'from-emerald-200 to-cyan-100' },
+  { path: '/admin', icon: BookOpen, label: 'Admin' },
+  { path: '/admin/content', icon: Code2, label: 'Content' },
 ]
+
+const SidebarLink = ({ item }) => (
+  <NavLink
+    to={item.path}
+    className={({ isActive }) => `
+      group relative flex items-center gap-3 rounded-xl border px-3 py-2.5 text-sm font-bold transition
+      ${isActive
+        ? 'border-accent bg-accent/15 text-primary'
+        : 'border-transparent text-secondary hover:border-app hover:bg-elevated hover:text-primary'
+      }
+    `}
+    title={item.label}
+  >
+    {({ isActive }) => (
+      <>
+        <span className={`absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-accent transition ${isActive ? 'opacity-100' : 'opacity-0'}`} />
+        <item.icon size={20} strokeWidth={1.5} className="shrink-0" />
+        <span className="whitespace-nowrap opacity-0 transition group-hover/sidebar:opacity-100">{item.label}</span>
+      </>
+    )}
+  </NavLink>
+)
 
 const Sidebar = () => {
   const { user, logout } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const visibleNavItems = user?.role === 'admin' ? [...adminNavItems, ...navItems] : navItems
+  const mobileItems = visibleNavItems.slice(0, 5)
 
   return (
-    <aside className="sticky top-24 hidden h-[calc(100vh-7rem)] w-72 shrink-0 flex-col rounded-[2rem] border border-white/70 bg-white/60 p-4 shadow-[0_24px_80px_rgba(83,68,35,0.12)] backdrop-blur-2xl lg:flex">
-      <div className="floating-island mb-4 p-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
-            <BookOpen size={22} className="text-emerald-800" />
+    <>
+      <aside className="group/sidebar sticky top-0 z-40 hidden h-screen w-[72px] shrink-0 flex-col border-r border-app bg-surface transition-[width] duration-300 hover:w-64 lg:flex">
+        <div className="flex h-16 items-center gap-3 border-b border-app px-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent font-display text-sm font-black text-white">
+            FS
           </div>
-          <div>
-            <p className="text-sm font-black text-stone-900">Classroom to career</p>
-            <p className="text-xs font-medium text-stone-500">Board exams, college, skills</p>
+          <div className="min-w-0 opacity-0 transition group-hover/sidebar:opacity-100">
+            <p className="font-display text-sm font-black text-primary">FirstStep</p>
+            <p className="text-[11px] font-semibold text-muted">Next step learning</p>
           </div>
         </div>
-      </div>
 
-      <nav className="flex-1 space-y-2 overflow-y-auto pr-1">
-        {visibleNavItems.map((item) => (
+        <nav className="flex-1 space-y-1 overflow-y-auto p-3">
+          {visibleNavItems.map((item) => (
+            <SidebarLink key={item.path} item={item} />
+          ))}
+        </nav>
+
+        <div className="space-y-1 border-t border-app p-3">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="group flex w-full items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-sm font-bold text-secondary transition hover:border-app hover:bg-elevated hover:text-primary focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-accent/25"
+          >
+            {theme === 'dark' ? <Sun size={20} strokeWidth={1.5} /> : <Moon size={20} strokeWidth={1.5} />}
+            <span className="whitespace-nowrap opacity-0 transition group-hover/sidebar:opacity-100">
+              {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={logout}
+            className="group flex w-full items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-sm font-bold text-secondary transition hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-300 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-accent/25"
+          >
+            <LogOut size={20} strokeWidth={1.5} />
+            <span className="whitespace-nowrap opacity-0 transition group-hover/sidebar:opacity-100">Logout</span>
+          </button>
+        </div>
+      </aside>
+
+      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-app bg-surface/95 px-2 py-2 backdrop-blur lg:hidden" aria-label="Mobile navigation">
+        {mobileItems.map((item) => (
           <NavLink
             key={item.path}
             to={item.path}
-            className={({ isActive }) => `
-              group flex items-center gap-3 rounded-[1.4rem] px-3 py-3 text-sm font-bold transition duration-300
-              ${isActive
-                ? `bg-gradient-to-r ${item.tone} text-stone-950 shadow-[0_14px_34px_rgba(96,76,35,0.14)]`
-                : 'text-stone-600 hover:bg-white/70 hover:text-stone-950'
-              }
-            `}
+            className={({ isActive }) => `flex flex-col items-center justify-center gap-1 rounded-xl px-2 py-2 text-[10px] font-black ${isActive ? 'text-primary' : 'text-muted'}`}
           >
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/70 transition group-hover:scale-105">
-              <item.icon size={19} />
-            </span>
-            <span>{item.label}</span>
+            <item.icon size={19} strokeWidth={1.5} />
+            <span className="max-w-full truncate">{item.label.split(' ')[0]}</span>
           </NavLink>
         ))}
       </nav>
-
-      <div className="mt-4 space-y-2 border-t border-white/70 pt-4">
-        <button
-          onClick={toggleTheme}
-          className="soft-button w-full justify-start"
-        >
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-100">
-            {theme === 'dark' ? 'L' : 'D'}
-          </span>
-          <span>{theme === 'dark' ? 'Light Journey' : 'Focus Evening'}</span>
-        </button>
-        <button
-          onClick={logout}
-          className="soft-button w-full justify-start text-red-700"
-        >
-          <LogOut size={18} />
-          <span>Leave Journey</span>
-        </button>
-      </div>
-    </aside>
+    </>
   )
 }
 
