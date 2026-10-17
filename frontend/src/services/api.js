@@ -36,13 +36,15 @@ api.interceptors.response.use(
   (error) => {
     const requestUrl = error.config?.url || "";
 
-    if (
-      error.response?.status === 401 &&
-      requestUrl.includes("/auth/me") &&
-      window.location.pathname !== "/login"
-    ) {
+    const isAuthRequest =
+      requestUrl.includes("/auth/login") ||
+      requestUrl.includes("/auth/register");
+    if (error.response?.status === 401 && !isAuthRequest) {
       localStorage.removeItem("token");
-      window.location.href = "/login";
+      delete api.defaults.headers.common.Authorization;
+      if (window.location.pathname !== "/login") {
+        window.location.href = "/login";
+      }
     }
 
     return Promise.reject(error);

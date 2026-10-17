@@ -10,7 +10,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: MONGO_URI
-        value: mongodb+srv://<harishwar1308_db_user>:vNYVqxjF1LeNu5cN@cluster0.71c3k6a.mongodb.net/firststep
+        sync: false
       - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET
@@ -27,3 +27,29 @@ services:
         sync: false
       - key: ADMIN_NAME
         sync: false
+
+  - type: web
+    name: firststep-ai-service
+    runtime: docker
+    rootDir: ai_service
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-1.5-flash
+      - key: CHROMA_HOST
+        sync: false
+      - key: CHROMA_PORT
+        value: 8000
+      - key: CHROMA_API_KEY
+        sync: false
+      - key: CHROMA_TENANT
+        sync: false
+      - key: CHROMA_DATABASE
+        value: FIRST_STEP
+      - key: CHROMA_COLLECTION
+        value: documents

@@ -11,6 +11,11 @@ export const learningAssessmentService = {
     return response.data
   },
 
+  getLearningProfile: async () => {
+    const response = await api.get('/learning-profile')
+    return response.data
+  },
+
   submitAssessment: async (responses) => {
     const response = await api.post('/learning-assessment/submit', { responses })
     return response.data

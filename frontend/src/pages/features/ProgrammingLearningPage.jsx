@@ -10,7 +10,6 @@ import {
   Flame,
   Layers3,
   PlayCircle,
-  RotateCcw,
   Save,
   Sparkles,
   Target,
@@ -73,7 +72,6 @@ const getUniqueWatchedSeconds = (segments = []) =>
 
 const ProgrammingLearningPage = () => {
   const queryClient = useQueryClient()
-  const canvasRef = useRef(null)
   const playerContainerRef = useRef(null)
   const playerRef = useRef(null)
   const syncInFlightRef = useRef(false)
@@ -91,7 +89,6 @@ const ProgrammingLearningPage = () => {
   const [metrics, setMetrics] = useState(metricDefaults)
   const [answers, setAnswers] = useState({})
   const [notesDraft, setNotesDraft] = useState('')
-  const [drawingNotes, setDrawingNotes] = useState('')
   const [activeFlashcard, setActiveFlashcard] = useState(0)
   const [flipped, setFlipped] = useState(false)
 
@@ -260,57 +257,17 @@ const ProgrammingLearningPage = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['programming-lesson', selectedLessonId] })
       queryClient.invalidateQueries({ queryKey: ['programming-subjects'] })
+      queryClient.invalidateQueries({ queryKey: ['learning-profile'] })
     },
   })
 
   const saveNotesMutation = useMutation({
     mutationFn: () => programmingLearningService.saveNotes(selectedLessonId, notesDraft),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['programming-lesson', selectedLessonId] }),
-  })
-
-  const saveDrawingMutation = useMutation({
-    mutationFn: () => {
-      const canvas = canvasRef.current
-      return programmingLearningService.saveDrawing(selectedLessonId, {
-        title: `${lesson?.title || 'Lesson'} notebook`,
-        dataUrl: canvas ? canvas.toDataURL('image/png') : '',
-        notes: drawingNotes,
-      })
-    },
     onSuccess: () => {
-      setDrawingNotes('')
       queryClient.invalidateQueries({ queryKey: ['programming-lesson', selectedLessonId] })
+      queryClient.invalidateQueries({ queryKey: ['learning-profile'] })
     },
   })
-
-  const drawStarter = () => {
-    const canvas = canvasRef.current
-    const context = canvas?.getContext('2d')
-    if (!context) return
-    context.clearRect(0, 0, canvas.width, canvas.height)
-    context.fillStyle = '#fff7ed'
-    context.fillRect(0, 0, canvas.width, canvas.height)
-    context.strokeStyle = '#0f172a'
-    context.lineWidth = 3
-    context.strokeRect(48, 44, 180, 64)
-    context.strokeRect(330, 44, 180, 64)
-    context.strokeRect(188, 170, 180, 64)
-    context.beginPath()
-    context.moveTo(228, 76)
-    context.lineTo(330, 76)
-    context.moveTo(420, 108)
-    context.lineTo(300, 170)
-    context.stroke()
-    context.font = '18px sans-serif'
-    context.fillStyle = '#1f2937'
-    context.fillText('Input', 108, 83)
-    context.fillText('Logic', 394, 83)
-    context.fillText('Output', 246, 209)
-  }
-
-  useEffect(() => {
-    drawStarter()
-  }, [selectedLessonId])
 
   useEffect(() => {
     const videoId = getYouTubeVideoId(lesson?.videoUrl)
@@ -648,24 +605,6 @@ const ProgrammingLearningPage = () => {
                     Next
                   </button>
                 </div>
-              </div>
-
-              <div className="floating-island">
-                <div className="mb-4 flex items-center justify-between">
-                  <h3 className="text-xl font-black text-stone-950">Notebook Canvas</h3>
-                  <RotateCcw className="cursor-pointer text-stone-600" onClick={drawStarter} />
-                </div>
-                <canvas ref={canvasRef} width="560" height="280" className="w-full rounded-[1.2rem] border border-white bg-white shadow-inner" />
-                <textarea
-                  value={drawingNotes}
-                  onChange={(event) => setDrawingNotes(event.target.value)}
-                  placeholder="Add handwritten-note summary, flowchart idea, or algorithm notes."
-                  className="mt-3 min-h-20 w-full rounded-[1rem] border border-stone-200 bg-white/80 p-3 text-sm outline-none focus:ring-4 focus:ring-emerald-100"
-                />
-                <button onClick={() => saveDrawingMutation.mutate()} className="soft-button mt-3" disabled={saveDrawingMutation.isPending}>
-                  <Save size={17} />
-                  Save notebook
-                </button>
               </div>
             </div>
           </section>

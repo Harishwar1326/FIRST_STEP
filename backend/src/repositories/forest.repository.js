@@ -1,56 +1,55 @@
-import mongoose from 'mongoose'
-import { KnowledgeGraph } from '../models/forest.model.js'
-import { LearningPath } from '../models/forest.model.js'
+import mongoose from "mongoose";
+import { KnowledgeGraph } from "../models/forest.model.js";
+import { LearningPath } from "../models/forest.model.js";
 
 export const forestRepository = {
   async createGraph(graphData) {
-    const graph = new KnowledgeGraph(graphData)
-    await graph.save()
-    return graph
+    const graph = new KnowledgeGraph(graphData);
+    await graph.save();
+    return graph;
   },
 
   async findGraphByUserId(userId) {
-    return KnowledgeGraph.findOne({ userId })
+    return KnowledgeGraph.findOne({ userId: String(userId) });
   },
 
   async findConceptById(conceptId) {
     return KnowledgeGraph.findOne(
-      { 'nodes.id': conceptId },
-      { 'nodes.$': 1 }
-    ).then((graph) => graph?.nodes[0])
+      { "nodes.id": conceptId },
+      { "nodes.$": 1 },
+    ).then((graph) => graph?.nodes[0]);
   },
 
   async updateGraph(userId, graphData) {
     return KnowledgeGraph.findOneAndUpdate(
-      { userId },
+      { userId: String(userId) },
       graphData,
-      { new: true, upsert: true }
-    )
+      { new: true, upsert: true },
+    );
   },
 
   async createLearningPath(pathData) {
-    const path = new LearningPath(pathData)
-    await path.save()
-    return path
+    const path = new LearningPath(pathData);
+    await path.save();
+    return path;
   },
 
   async findLearningPathByUserId(userId) {
-    return LearningPath.findOne({ userId })
+    return LearningPath.findOne({ userId: String(userId) });
   },
 
   async updateLearningPath(userId, pathData) {
-    return LearningPath.findOneAndUpdate(
-      { userId },
-      pathData,
-      { new: true, upsert: true }
-    )
+    return LearningPath.findOneAndUpdate({ userId: String(userId) }, pathData, {
+      new: true,
+      upsert: true,
+    });
   },
 
   async updateGaps(userId, gaps) {
     return KnowledgeGraph.findOneAndUpdate(
-      { userId },
+      { userId: String(userId) },
       { gaps },
-      { new: true }
-    )
+      { new: true },
+    );
   },
-}
+};

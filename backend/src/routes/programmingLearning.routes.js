@@ -13,7 +13,6 @@ router.get('/lesson/:id', programmingLearningController.lesson)
 router.post('/lesson/:id/track', programmingLearningController.track)
 router.post('/lesson/:id/quiz', programmingLearningController.submitQuiz)
 router.post('/lesson/:id/notes', programmingLearningController.saveNotes)
-router.post('/lesson/:id/drawing', programmingLearningController.saveDrawing)
 router.get('/recommendations', programmingLearningController.recommendations)
 
 export default router

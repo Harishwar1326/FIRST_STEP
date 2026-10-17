@@ -118,6 +118,14 @@ const AppRouter = () => {
         </ProtectedRoute>
       }/>
 
+      <Route path="/learning-profile" element={
+        <ProtectedRoute>
+          <MainLayout>
+            <LearningAssessmentPage />
+          </MainLayout>
+        </ProtectedRoute>
+      }/>
+
       <Route path="/admin" element={
         <ProtectedRoute roles={['admin']}>
           <MainLayout>

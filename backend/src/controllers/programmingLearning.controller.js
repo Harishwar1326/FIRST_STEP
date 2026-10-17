@@ -59,14 +59,6 @@ export const programmingLearningController = {
     }
   },
 
-  saveDrawing: async (req, res, next) => {
-    try {
-      res.status(201).json(await programmingLearningService.saveDrawing(getUserId(req), req.params.id, req.body))
-    } catch (error) {
-      next(error)
-    }
-  },
-
   recommendations: async (req, res, next) => {
     try {
       res.status(200).json(await programmingLearningService.getRecommendations(getUserId(req)))

@@ -1,52 +1,58 @@
-import mongoose from 'mongoose'
+import mongoose from "mongoose";
 
 const knowledgeGraphSchema = new mongoose.Schema(
   {
     userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type: String,
       required: true,
       unique: true,
     },
-    nodes: [{
-      id: String,
-      name: String,
-      category: String,
-      mastery: Number,
-      connections: Number,
-      difficulty: String,
-    }],
-    edges: [{
-      source: String,
-      target: String,
-      type: String,
-      strength: Number,
-    }],
-    gaps: [{
-      concept: String,
-      reason: String,
-      priority: String,
-    }],
+    nodes: [
+      {
+        id: String,
+        name: String,
+        category: String,
+        mastery: Number,
+        connections: Number,
+        difficulty: String,
+      },
+    ],
+    edges: [
+      {
+        source: String,
+        target: String,
+        type: String,
+        strength: Number,
+      },
+    ],
+    gaps: [
+      {
+        concept: String,
+        reason: String,
+        priority: String,
+      },
+    ],
   },
   {
     timestamps: true,
-  }
-)
+  },
+);
 
 const learningPathSchema = new mongoose.Schema(
   {
     userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type: String,
       required: true,
       unique: true,
     },
-    steps: [{
-      order: Number,
-      concept: String,
-      status: String,
-      prerequisites: [String],
-    }],
+    steps: [
+      {
+        order: Number,
+        concept: String,
+        status: String,
+        prerequisites: [String],
+      },
+    ],
     currentStep: {
       type: Number,
       default: 1,
@@ -58,8 +64,11 @@ const learningPathSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
-)
+  },
+);
 
-export const KnowledgeGraph = mongoose.model('KnowledgeGraph', knowledgeGraphSchema)
-export const LearningPath = mongoose.model('LearningPath', learningPathSchema)
+export const KnowledgeGraph = mongoose.model(
+  "KnowledgeGraph",
+  knowledgeGraphSchema,
+);
+export const LearningPath = mongoose.model("LearningPath", learningPathSchema);

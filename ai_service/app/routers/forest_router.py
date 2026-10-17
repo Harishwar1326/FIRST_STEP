@@ -18,6 +18,11 @@ class ConceptRequest(BaseModel):
     userId: str
     conceptId: str
 
+class ConceptMapRequest(BaseModel):
+    userId: str
+    concept: str = ""
+    sourceText: str = ""
+
 @router.post("/graph/generate")
 async def generate_knowledge_graph(request: GraphGenerateRequest):
     """Generate interactive knowledge graph from student's notes"""
@@ -57,3 +62,12 @@ async def get_concept_details(request: ConceptRequest):
     except Exception as e:
         logger.error(f"Get concept details failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/concept-map")
+async def generate_concept_map(request: ConceptMapRequest):
+    """Extract entities and relationships for a student's concept."""
+    try:
+        return await forest_pipeline.generate_entity_map(request.sourceText, request.concept)
+    except Exception as e:
+        logger.error(f"Concept relationship map failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Could not generate concept relationship map")

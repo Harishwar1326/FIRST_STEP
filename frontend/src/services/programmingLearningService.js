@@ -31,11 +31,6 @@ export const programmingLearningService = {
     return response.data
   },
 
-  saveDrawing: async (lessonId, payload) => {
-    const response = await api.post(`/programming-learning/lesson/${lessonId}/drawing`, payload)
-    return response.data
-  },
-
   getRecommendations: async () => {
     const response = await api.get('/programming-learning/recommendations')
     return response.data

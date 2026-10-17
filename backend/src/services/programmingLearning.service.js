@@ -660,17 +660,6 @@ export const programmingLearningService = {
     return { notes, saved: true }
   },
 
-  async saveDrawing(userId, lessonId, payload) {
-    const drawing = await LessonDrawing.create({
-      userId,
-      lessonId,
-      title: payload.title || 'Lesson notebook',
-      dataUrl: payload.dataUrl || '',
-      notes: payload.notes || '',
-    })
-    return { drawing }
-  },
-
   async getRecommendations(userId) {
     const { subjects } = await this.listSubjects(userId)
     const flatLessons = subjects.flatMap((subject) => subject.lessons.map((lesson) => ({ ...lesson, subjectTitle: subject.title })))

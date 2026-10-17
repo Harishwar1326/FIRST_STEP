@@ -52,8 +52,8 @@ class LearningEnginePipeline:
         style_path = base_data_dir / "style_model.joblib"
         diff_path = base_data_dir / "diff_model.joblib"
 
-        self.style_classes = ['Visual', 'Text', 'Practice-Oriented', 'Mixed']
-        self.diff_classes = ['Easy', 'Medium', 'Advanced']
+        self.style_classes = ['Visual', 'Text/Reading', 'Practical/Hands-on', 'Interactive Quiz']
+        self.diff_classes = ['Beginner', 'Intermediate', 'Advanced']
 
         if mastery_path.exists() and retention_path.exists() and style_path.exists() and diff_path.exists():
             try:
@@ -152,34 +152,59 @@ class LearningEnginePipeline:
 
     def predict_profile(self, features: Dict) -> Dict:
         """Predict mastery, retention, learning style, and recommended difficulty"""
-        # Parse mastery inputs
-        quiz_score = features.get("quizScore", 75.0)
-        task_completion = features.get("taskCompletion", 0.8)
-        study_time = features.get("studyTime", 20.0)
-        revisions = features.get("revisionCount", 1)
+        # Parse mastery inputs: ['average_quiz_score', 'lesson_completion_rate', 'average_session_time', 'revision_frequency']
+        quiz_score = float(features.get("quizScore", features.get("averageQuizScore", 75.0)))
+        task_completion = float(features.get("taskCompletion", features.get("lessonCompletionRate", 0.8)))
+        if task_completion > 1.0:
+            task_completion = task_completion / 100.0
+        task_completion = float(np.clip(task_completion, 0.0, 1.0))
+
+        study_time = float(features.get("studyTime", features.get("averageSessionTime", 20.0)))
+        revisions = float(features.get("revisionCount", features.get("revisionFrequency", 1.0)))
 
         mastery_pred = self.mastery_model.predict([[quiz_score, task_completion, study_time, revisions]])[0]
         mastery_pred = float(np.clip(mastery_pred, 0, 100))
 
-        # Parse retention inputs
-        days_since_rev = features.get("daysSinceLastRevision", 1.0)
-        quiz_accuracy = quiz_score / 100.0
+        # Parse retention inputs: ['average_session_time', 'revision_frequency', 'days_active', 'quiz_accuracy']
+        days_active = float(features.get("daysActive", features.get("daysSinceLastRevision", 5.0)))
+        quiz_accuracy = float(features.get("quizAccuracy", quiz_score / 100.0))
+        if quiz_accuracy > 1.0:
+            quiz_accuracy = quiz_accuracy / 100.0
+        quiz_accuracy = float(np.clip(quiz_accuracy, 0.0, 1.0))
 
-        retention_proba = self.retention_model.predict_proba([[study_time, revisions, days_since_rev, quiz_accuracy]])[0][1]
+        retention_proba = self.retention_model.predict_proba([[study_time, revisions, days_active, quiz_accuracy]])[0][1]
         retention_proba = float(np.clip(retention_proba, 0.0, 1.0))
 
-        # Parse style inputs
-        reading_speed = features.get("readingSpeed", 150.0)
-        drawing_activity = features.get("drawingActivity", 10.0)
-        video_ratio = features.get("videoDurationRatio", 0.5)
-        notes_length = features.get("notesLength", 100.0)
+        # Parse style inputs in EXACT training order:
+        # ['average_watch_percentage', 'pause_frequency', 'video_watch_rate', 'average_answer_time']
+        watch_pct = float(features.get("averageWatchPercentage", features.get("videoDurationRatio", 0.5)))
+        if watch_pct > 1.0:
+            watch_pct = watch_pct / 100.0
+        watch_pct = float(np.clip(watch_pct, 0.0, 1.0))
 
-        style_idx = self.style_model.predict([[reading_speed, drawing_activity, video_ratio, notes_length]])[0]
+        pause_freq = float(features.get("pauseFrequency", 1.0))
+        video_rate = float(features.get("videoWatchRate", features.get("videoDurationRatio", 0.5)))
+        if video_rate > 1.0:
+            video_rate = video_rate / 100.0
+        video_rate = float(np.clip(video_rate, 0.0, 1.0))
+
+        answer_time = float(features.get("averageAnswerTime", 30.0))
+
+        style_idx = int(self.style_model.predict([[watch_pct, pause_freq, video_rate, answer_time]])[0])
         style_pred = self.style_classes[style_idx]
 
-        # Parse difficulty inputs
-        confidence = features.get("confidenceLevel", 3)
-        diff_idx = self.diff_model.predict([[mastery_pred, quiz_score, confidence]])[0]
+        # Parse difficulty inputs:
+        # ['mastery_100', 'average_quiz_score', 'confidence_5']
+        conf_raw = float(features.get("confidenceLevel", 3.0))
+        if conf_raw > 5.0 and conf_raw <= 100.0:
+            confidence_5 = (conf_raw / 100.0) * 5.0
+        elif conf_raw <= 1.0:
+            confidence_5 = conf_raw * 5.0
+        else:
+            confidence_5 = conf_raw
+        confidence_5 = float(np.clip(confidence_5, 1.0, 5.0))
+
+        diff_idx = int(self.diff_model.predict([[mastery_pred, quiz_score, confidence_5]])[0])
         diff_pred = self.diff_classes[diff_idx]
 
         return {
@@ -218,7 +243,7 @@ class LearningEnginePipeline:
 
         if self.gemini_enabled:
             try:
-                model = genai.GenerativeModel('gemini-pro')
+                model = genai.GenerativeModel(settings.GEMINI_MODEL)
                 response = model.generate_content(prompt)
                 return {"notes": response.text, "level": mastery_level, "generatedBy": "Gemini"}
             except Exception as e:
@@ -293,7 +318,7 @@ class LearningEnginePipeline:
 
         if self.gemini_enabled:
             try:
-                model = genai.GenerativeModel('gemini-pro')
+                model = genai.GenerativeModel(settings.GEMINI_MODEL)
                 response = model.generate_content(prompt)
                 import json
                 cleaned_text = response.text.strip().replace("```json", "").replace("```", "").strip()

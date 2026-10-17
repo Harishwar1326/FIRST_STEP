@@ -3,6 +3,11 @@ import logging
 from typing import Dict, List
 from collections import defaultdict
 import random
+import re
+try:
+    import spacy
+except ImportError:
+    spacy = None
 
 logger = logging.getLogger("ai_service")
 
@@ -12,6 +17,89 @@ class ForestPipeline:
         self.user_graphs = {}
         self.user_paths = {}
         self.user_concepts = defaultdict(dict)
+        self.nlp = None
+        if spacy is not None:
+            try:
+                self.nlp = spacy.load("en_core_web_sm")
+            except Exception as e:
+                logger.warning(f"Knowledge Forest NLP model unavailable: {str(e)}")
+
+    async def generate_entity_map(self, source_text: str, concept: str = "") -> Dict:
+        """Extract entities and co-occurrence relationships from supplied study material."""
+        text = " ".join((source_text or "").split())[:100000]
+        focus = (concept or "").strip()
+        if not text and not focus:
+            return {"concept": "", "nodes": [], "edges": [], "entityCount": 0, "relationshipCount": 0}
+
+        if self.nlp is None:
+            return self._fallback_entity_map(text, focus)
+
+        doc = self.nlp(text)
+        entities = {}
+        for entity in doc.ents:
+            name = entity.text.strip()
+            if len(name) > 1:
+                key = name.casefold()
+                entities.setdefault(key, {"name": name, "type": entity.label_, "mentions": 0})
+                entities[key]["mentions"] += 1
+
+        if focus:
+            focus_key = focus.casefold()
+            entities.setdefault(focus_key, {"name": focus, "type": "CONCEPT", "mentions": 1})
+
+        edges = {}
+        for sentence in doc.sents:
+            sentence_entities = []
+            for entity in sentence.ents:
+                key = entity.text.strip().casefold()
+                if key in entities and key not in sentence_entities:
+                    sentence_entities.append(key)
+            if focus and focus.casefold() in sentence.text.casefold() and len(sentence_entities) == 1:
+                sentence_entities.append(focus.casefold())
+            for index, source in enumerate(sentence_entities):
+                for target in sentence_entities[index + 1:]:
+                    edge_key = tuple(sorted((source, target)))
+                    edges[edge_key] = edges.get(edge_key, 0) + 1
+
+        nodes = [
+            {
+                "id": self._entity_id(key),
+                "name": value["name"],
+                "type": value["type"],
+                "mentions": value["mentions"],
+                "isFocus": key == focus.casefold(),
+            }
+            for key, value in entities.items()
+        ]
+        node_ids = {key: self._entity_id(key) for key in entities}
+        relationships = [
+            {
+                "source": node_ids[source],
+                "target": node_ids[target],
+                "type": "mentioned-together",
+                "strength": min(1.0, 0.35 + (count * 0.15)),
+                "evidenceCount": count,
+            }
+            for (source, target), count in sorted(edges.items(), key=lambda item: item[1], reverse=True)
+        ]
+        return {
+            "concept": focus,
+            "nodes": nodes,
+            "edges": relationships[:80],
+            "entityCount": len(nodes),
+            "relationshipCount": min(len(relationships), 80),
+        }
+
+    @staticmethod
+    def _entity_id(value: str) -> str:
+        return re.sub(r"[^a-z0-9]+", "-", value.casefold()).strip("-") or "entity"
+
+    def _fallback_entity_map(self, text: str, focus: str) -> Dict:
+        candidates = re.findall(r"\b[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})*\b", text)
+        names = list(dict.fromkeys(([focus] if focus else []) + candidates[:40]))
+        nodes = [{"id": self._entity_id(name), "name": name, "type": "CONCEPT", "mentions": 1, "isFocus": name.casefold() == focus.casefold()} for name in names]
+        edges = [{"source": nodes[index]["id"], "target": nodes[index + 1]["id"], "type": "mentioned-together", "strength": 0.4, "evidenceCount": 1} for index in range(len(nodes) - 1)]
+        return {"concept": focus, "nodes": nodes, "edges": edges, "entityCount": len(nodes), "relationshipCount": len(edges)}
     
     async def generate_graph(self, user_id: str) -> Dict:
         """

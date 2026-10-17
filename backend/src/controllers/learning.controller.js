@@ -1,4 +1,5 @@
 import { learningService } from '../services/learning.service.js';
+import { learningProfileService } from '../services/learningProfile.service.js';
 import { seedLessons } from '../utils/seedLessons.js';
 
 export const learningController = {
@@ -97,7 +98,7 @@ export const learningController = {
   getLearningProfile: async (req, res, next) => {
     try {
       const userId = req.user.id;
-      const profile = await learningService.getOrCreateProfile(userId);
+      const profile = await learningProfileService.getStudentLearningProfile(userId);
       res.status(200).json(profile);
     } catch (error) {
       next(error);

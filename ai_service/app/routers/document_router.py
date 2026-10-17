@@ -36,4 +36,6 @@ async def process_document(file: UploadFile = File(...)):
         }
     except Exception as e:
         logger.error(f"Document processing failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        if isinstance(e, ValueError):
+            raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=500, detail="Document processing failed")

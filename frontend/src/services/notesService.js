@@ -75,4 +75,27 @@ export const notesService = {
     const response = await api.post(`/notes/${noteId}/questions`, { bloomLevel })
     return response.data
   },
+
+  semanticSearch: async (query, options = {}) => {
+    const params = Object.fromEntries(
+      Object.entries({ query, ...options }).filter(([, value]) => value !== undefined && value !== null && value !== '')
+    )
+    const response = await api.get('/notes/search/semantic', { params })
+    return response.data
+  },
+
+  semanticSearchPost: async (query, options = {}) => {
+    const response = await api.post('/notes/search/semantic', { query, ...options })
+    return response.data
+  },
+
+  reindexNote: async (noteId) => {
+    const response = await api.post(`/notes/${noteId}/reindex`)
+    return response.data
+  },
+
+  reindexAllNotes: async () => {
+    const response = await api.post('/notes/reindex/all')
+    return response.data
+  },
 }

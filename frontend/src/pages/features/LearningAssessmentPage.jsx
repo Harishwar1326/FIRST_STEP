@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, CheckCircle2, Sparkles } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Sparkles, Activity } from 'lucide-react'
 import { learningAssessmentService } from '../../services/learningAssessmentService'
+import { learningProfileService } from '../../services/learningProfileService'
 import Badge from '../../components/ui/Badge'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
@@ -43,26 +44,50 @@ const validateResponses = (questions = [], responses = {}) => {
   return errors
 }
 
-const ProfileResult = ({ assessment, onRetake }) => {
-  const profile = assessment?.capabilityProfile || {}
-  const insights = assessment?.insights || {}
+const ProfileResult = ({ profile, onRetake }) => {
+  const skills = profile?.skills || profile?.capabilityProfile || {}
+  const insights = profile?.insights || {}
+
+  const strengths = profile?.strengths || insights.strengths || []
+  const areasToImprove = profile?.areasToImprove || insights.areasToImprove || []
+  const learningStyle = profile?.learningStyle || insights.learningPreference || 'Learning style is still being analyzed'
+  const studyAvailability = profile?.studyAvailability || insights.studyAvailability || '—'
+  const currentCapability = profile?.currentCapability || insights.currentCapability || 'Beginner'
+  const primaryGoal = profile?.primaryGoal || insights.primaryGoal || '—'
+  const overallScore = profile?.overallScore ?? profile?.assessmentScore ?? 0
+  const isDeveloping = Boolean(profile?.isDeveloping)
 
   const profileRows = [
-    ['Programming', profile.programming],
-    ['Problem Solving', profile.problemSolving],
-    ['Consistency', profile.consistency],
-    ['Confidence', profile.confidence],
-    ['Academic Performance', profile.academicPerformance],
+    ['Programming', skills.programming],
+    ['Problem Solving', skills.problemSolving],
+    ['Consistency', skills.consistency],
+    ['Confidence', skills.confidence],
+    ['Academic Performance', skills.academicPerformance],
   ]
 
   return (
     <div className="space-y-6">
       <Card className="p-6 sm:p-8">
-        <Badge tone="accent">Assessment complete</Badge>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Badge tone={isDeveloping ? 'warning' : 'accent'}>
+            {isDeveloping ? 'Learning profile is still developing.' : 'Active Dynamic Profile'}
+          </Badge>
+          <span className="flex items-center gap-1.5 text-xs font-semibold text-secondary">
+            <Activity size={14} className="text-accent" />
+            Backend & ML Pipeline Driven
+          </span>
+        </div>
+
         <h1 className="mt-4 font-display text-4xl font-black tracking-tight text-primary sm:text-5xl">Your Learning Profile</h1>
         <p className="mt-3 text-sm font-semibold text-secondary">
-          Knowledge check score: {assessment?.assessmentScore ?? 0}%
+          Overall mastery score: {overallScore}%
         </p>
+
+        {isDeveloping && (
+          <div className="mt-4 rounded-xl border border-app bg-surface p-3 text-xs font-semibold text-secondary">
+            {profile?.statusMessage || 'Learning profile is still developing. Ongoing activity across lessons, quizzes, and Thinking Lab continues to refine your profile.'}
+          </div>
+        )}
 
         <div className="mt-8 space-y-5">
           {profileRows.map(([label, value]) => (
@@ -81,7 +106,7 @@ const ProfileResult = ({ assessment, onRetake }) => {
         <Card className="p-5 sm:p-6">
           <SectionHeader eyebrow="Strengths" title="Your strengths" />
           <ul className="space-y-2">
-            {(insights.strengths || []).map((item) => (
+            {strengths.map((item) => (
               <li key={item} className="flex items-start gap-2 text-sm font-semibold text-primary">
                 <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-success" />
                 {item}
@@ -93,7 +118,7 @@ const ProfileResult = ({ assessment, onRetake }) => {
         <Card className="p-5 sm:p-6">
           <SectionHeader eyebrow="Growth" title="Areas to improve" />
           <ul className="space-y-2">
-            {(insights.areasToImprove || []).map((item) => (
+            {areasToImprove.map((item) => (
               <li key={item} className="flex items-start gap-2 text-sm font-semibold text-secondary">
                 <ArrowRight size={16} className="mt-0.5 shrink-0 text-accent" />
                 {item}
@@ -104,10 +129,10 @@ const ProfileResult = ({ assessment, onRetake }) => {
       </div>
 
       <Card className="grid gap-4 p-5 sm:grid-cols-2 sm:p-6 lg:grid-cols-4">
-        <Insight label="Learning style" value={insights.learningPreference} />
-        <Insight label="Study availability" value={insights.studyAvailability} />
-        <Insight label="Current capability" value={insights.currentCapability} />
-        <Insight label="Primary goal" value={insights.primaryGoal} />
+        <Insight label="Learning style" value={learningStyle} />
+        <Insight label="Study availability" value={studyAvailability} />
+        <Insight label="Current capability" value={currentCapability} />
+        <Insight label="Primary goal" value={primaryGoal} />
       </Card>
 
       <div className="flex flex-wrap gap-3">
@@ -137,6 +162,11 @@ const LearningAssessmentPage = () => {
   const [submitError, setSubmitError] = useState('')
   const [retaking, setRetaking] = useState(false)
 
+  const profileQuery = useQuery({
+    queryKey: ['learning-profile'],
+    queryFn: learningProfileService.getLearningProfile,
+  })
+
   const questionsQuery = useQuery({
     queryKey: ['learning-assessment-questions'],
     queryFn: learningAssessmentService.getQuestions,
@@ -153,6 +183,7 @@ const LearningAssessmentPage = () => {
       setRetaking(false)
       setSubmitError('')
       queryClient.invalidateQueries({ queryKey: ['learning-assessment-me'] })
+      queryClient.invalidateQueries({ queryKey: ['learning-profile'] })
     },
     onError: (error) => setSubmitError(getErrorMessage(error)),
   })
@@ -204,7 +235,9 @@ const LearningAssessmentPage = () => {
   }
 
   const completedAssessment = assessmentQuery.data?.assessment
-  const showResult = Boolean(completedAssessment?.completedAt) && !retaking
+  const hasCompletedAssessment = Boolean(completedAssessment?.completedAt || assessmentQuery.data?.completed)
+  const hasProfileData = Boolean(profileQuery.data && (profileQuery.data.overallScore !== undefined || profileQuery.data.skills))
+  const showResult = !retaking && (hasCompletedAssessment || hasProfileData)
 
   useEffect(() => {
     if (retaking && completedAssessment?.responses) {
@@ -212,31 +245,31 @@ const LearningAssessmentPage = () => {
     }
   }, [retaking, completedAssessment])
 
-  if (questionsQuery.isLoading || assessmentQuery.isLoading) {
+  if (profileQuery.isLoading || (retaking && questionsQuery.isLoading)) {
     return (
       <div className="world-page">
         <Skeleton className="h-40" />
         <Skeleton className="mt-4 h-96" />
-        <p className="mt-4 text-sm font-semibold text-secondary">Loading assessment...</p>
+        <p className="mt-4 text-sm font-semibold text-secondary">Loading learning profile from ML engine...</p>
       </div>
     )
   }
 
-  if (questionsQuery.isError || assessmentQuery.isError) {
+  if (profileQuery.isError && !showResult && (!questionsQuery.data || questionsQuery.isError)) {
     return (
       <div className="world-page">
         <EmptyState
-          title="Unable to load learning assessment"
-          message={getErrorMessage(questionsQuery.error || assessmentQuery.error)}
+          title="Unable to load learning profile"
+          message={getErrorMessage(profileQuery.error || questionsQuery.error)}
         />
       </div>
     )
   }
 
-  if (showResult) {
+  if (showResult && profileQuery.data) {
     return (
       <div className="world-page">
-        <ProfileResult assessment={completedAssessment} onRetake={() => setRetaking(true)} />
+        <ProfileResult profile={profileQuery.data} onRetake={() => setRetaking(true)} />
       </div>
     )
   }

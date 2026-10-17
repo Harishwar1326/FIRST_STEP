@@ -7,7 +7,7 @@ from app.utils.file_helpers import FileProcessor
 import logging
 import base64
 import io
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 logger = logging.getLogger("ai_service")
 
@@ -16,11 +16,18 @@ class DocumentPipeline:
         self.nlp = spacy.load("en_core_web_sm")
         self.sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
         self.keybert = KeyBERT(model=self.sentence_model)
-        self.chroma_client = chromadb.HttpClient(
-            host=settings.CHROMA_HOST,
-            port=settings.CHROMA_PORT
-        )
+        self.chroma_client = self._create_chroma_client()
         self.file_processor = FileProcessor()
+
+    def _create_chroma_client(self):
+        """Use Chroma Cloud in production and local Chroma during development."""
+        if all((settings.CHROMA_API_KEY, settings.CHROMA_TENANT, settings.CHROMA_DATABASE)):
+            return chromadb.CloudClient(
+                api_key=settings.CHROMA_API_KEY,
+                tenant=settings.CHROMA_TENANT,
+                database=settings.CHROMA_DATABASE,
+            )
+        return chromadb.HttpClient(host=settings.CHROMA_HOST, port=settings.CHROMA_PORT)
         
     async def process(self, file) -> Dict:
         """
@@ -32,6 +39,8 @@ class DocumentPipeline:
             
             # Clean and preprocess
             cleaned_content = self._clean_text(content)
+            if not cleaned_content:
+                raise ValueError("No readable text was found in the uploaded document")
             
             # Extract text using spaCy
             doc = self.nlp(cleaned_content)
@@ -141,19 +150,47 @@ class DocumentPipeline:
     async def _store_embeddings(self, doc_id: str, embeddings: List, content: str):
         """Store embeddings in ChromaDB"""
         try:
-            collection = self.chroma_client.get_or_create_collection(name="documents")
-            collection.add(
-                documents=[content],
-                embeddings=[embeddings[0] if embeddings else []],
-                ids=[doc_id]
+            collection = self.chroma_client.get_or_create_collection(name=settings.CHROMA_COLLECTION)
+            chunks = self._chunk_text(content, chunk_size=512)
+            chunk_embeddings = self.sentence_model.encode(chunks).tolist()
+            collection.upsert(
+                documents=chunks,
+                embeddings=chunk_embeddings,
+                ids=[f"{doc_id}-{index}" for index in range(len(chunks))],
+                metadatas=[{"documentId": doc_id, "chunkIndex": index} for index in range(len(chunks))],
             )
         except Exception as e:
             logger.error(f"ChromaDB storage error: {str(e)}")
+
+    def retrieve(self, question: str, document_id: Optional[str] = None, limit: int = 5) -> List[Dict]:
+        """Retrieve the most relevant PDF chunks for a question."""
+        try:
+            collection = self.chroma_client.get_or_create_collection(name=settings.CHROMA_COLLECTION)
+            where = {"documentId": document_id} if document_id else None
+            query_embedding = self.sentence_model.encode([question])[0].tolist()
+            result = collection.query(
+                query_embeddings=[query_embedding],
+                n_results=max(1, min(limit, 10)),
+                where=where,
+            )
+            documents = (result.get("documents") or [[]])[0]
+            metadatas = (result.get("metadatas") or [[]])[0]
+            distances = (result.get("distances") or [[]])[0]
+            return [
+                {"document": document, "metadata": metadata or {}, "distance": distance}
+                for document, metadata, distance in zip(documents, metadatas, distances)
+            ]
+        except Exception as e:
+            logger.warning(f"Chroma retrieval unavailable: {str(e)}")
+            return []
     
     def _estimate_difficulty(self, text: str, concepts: List[str]) -> int:
         """Estimate content difficulty (1-10)"""
         # Simple heuristic based on vocabulary complexity
-        avg_word_length = sum(len(word) for word in text.split()) / len(text.split())
+        words = text.split()
+        if not words:
+            return 1
+        avg_word_length = sum(len(word) for word in words) / len(words)
         concept_complexity = len(concepts)
         
         difficulty = min(10, int((avg_word_length - 4) * 2 + concept_complexity / 2))

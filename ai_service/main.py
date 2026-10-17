@@ -1,7 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-import spacy
+try:
+    import spacy
+except ImportError:
+    spacy = None
 import logging
 from app.core.config import settings
 from app.routers import document_router, flashcard_router, mindmap_router, question_router
@@ -16,12 +19,15 @@ logger = logging.getLogger("ai_service")
 async def lifespan(app: FastAPI):
     # Startup actions
     logger.info("Initializing AI ML Pipelines & Models...")
-    try:
-        # Verify spaCy is loadable
-        nlp = spacy.load("en_core_web_sm")
-        logger.info("🛡️  spaCy (en_core_web_sm) loaded successfully!")
-    except Exception as e:
-        logger.error(f"❌ Failed to load spaCy model: {str(e)}")
+    if spacy is not None:
+        try:
+            # Verify spaCy is loadable
+            nlp = spacy.load("en_core_web_sm")
+            logger.info("🛡️  spaCy (en_core_web_sm) loaded successfully!")
+        except Exception as e:
+            logger.error(f"❌ Failed to load spaCy model: {str(e)}")
+    else:
+        logger.info("ℹ️  spaCy not installed, using fallback NLP modules.")
         
     yield
     # Shutdown actions

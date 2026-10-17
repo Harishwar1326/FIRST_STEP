@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Brain, Check, Compass, MessageCircle, Sparkles, Target, TrendingUp } from 'lucide-react'
+import { Brain, Check, Clock3, Compass, MessageCircle, PlayCircle, Sparkles, Target, TrendingUp } from 'lucide-react'
 import { twinService } from '../../services/twinService'
 import Badge from '../../components/ui/Badge'
 import Card from '../../components/ui/Card'
@@ -15,6 +15,9 @@ const LearningTwinPage = () => {
   const [analytics, setAnalytics] = useState(null)
   const [recommendations, setRecommendations] = useState(null)
   const [error, setError] = useState('')
+  const [sprint, setSprint] = useState({ subject: '', duration: 25, accuracy: 80 })
+  const [savingSprint, setSavingSprint] = useState(false)
+  const [sprintSaved, setSprintSaved] = useState(false)
 
   useEffect(() => {
     fetchTwinData()
@@ -42,6 +45,29 @@ const LearningTwinPage = () => {
   const practiceTopics = recommendations?.practiceTopics || []
   const strengths = profile?.strengths || []
   const weaknesses = profile?.weaknesses || analytics?.weakTopics || []
+
+  const logStudySprint = async (event) => {
+    event.preventDefault()
+    if (!sprint.subject.trim()) return
+    setSavingSprint(true)
+    setSprintSaved(false)
+    try {
+      await twinService.updateProgress({
+        studySession: {
+          subject: sprint.subject.trim(),
+          duration: Number(sprint.duration),
+          accuracy: Number(sprint.accuracy),
+        },
+      })
+      setSprintSaved(true)
+      setSprint((current) => ({ ...current, subject: '' }))
+      await fetchTwinData()
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not record this study sprint.')
+    } finally {
+      setSavingSprint(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -130,6 +156,29 @@ const LearningTwinPage = () => {
           <EmptyState title="Focus areas pending" message="Your Twin will recommend focus areas once it has enough learning behavior." />
         )}
       </Card>
+
+      <section className="mt-6 grid gap-4 xl:grid-cols-[.85fr_1.15fr]">
+        <Card className="p-6">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent text-white"><PlayCircle size={22} /></div>
+            <div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-muted">Teach your Twin</p><h2 className="font-display text-2xl font-black text-primary">Log a study sprint</h2></div>
+          </div>
+          <p className="mt-4 text-sm font-semibold leading-6 text-secondary">Record what you studied and how confident you felt. Your next recommendations become more personal with every sprint.</p>
+          <form onSubmit={logStudySprint} className="mt-5 space-y-3">
+            <input value={sprint.subject} onChange={(event) => setSprint((current) => ({ ...current, subject: event.target.value }))} placeholder="What did you study?" className="w-full rounded-xl border border-app bg-elevated px-3 py-3 text-sm font-bold text-primary outline-none focus:border-accent" />
+            <div className="grid grid-cols-2 gap-3">
+              <label className="rounded-xl border border-app bg-elevated px-3 py-2"><span className="block text-[10px] font-black uppercase tracking-wider text-muted">Minutes</span><select value={sprint.duration} onChange={(event) => setSprint((current) => ({ ...current, duration: event.target.value }))} className="mt-1 w-full bg-transparent text-sm font-black text-primary outline-none"><option value="15">15 min</option><option value="25">25 min</option><option value="45">45 min</option><option value="60">60 min</option></select></label>
+              <label className="rounded-xl border border-app bg-elevated px-3 py-2"><span className="block text-[10px] font-black uppercase tracking-wider text-muted">Confidence</span><select value={sprint.accuracy} onChange={(event) => setSprint((current) => ({ ...current, accuracy: event.target.value }))} className="mt-1 w-full bg-transparent text-sm font-black text-primary outline-none"><option value="50">Still unsure</option><option value="70">Getting there</option><option value="85">Pretty clear</option><option value="100">I can teach it</option></select></label>
+            </div>
+            <button type="submit" disabled={savingSprint || !sprint.subject.trim()} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-black text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"><Clock3 size={17} />{savingSprint ? 'Updating your Twin...' : 'Save this sprint'}</button>
+            {sprintSaved && <p className="text-center text-xs font-black text-emerald-600">Saved. Your Twin is learning from this session.</p>}
+          </form>
+        </Card>
+        <Card className="p-6">
+          <div className="flex items-center justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-muted">Recent rhythm</p><h2 className="mt-1 font-display text-2xl font-black text-primary">Your study pattern</h2></div><TrendingUp size={22} className="text-accent" /></div>
+          {analytics?.studySessions?.length ? <div className="mt-5 grid gap-3 sm:grid-cols-2">{analytics.studySessions.slice(-4).reverse().map((session, index) => <div key={`${session.timestamp || session.date || index}-${index}`} className="rounded-2xl border border-app bg-elevated p-4"><div className="flex items-center justify-between gap-2"><span className="truncate text-sm font-black text-primary">{session.subject || 'General study'}</span><span className="text-xs font-black text-accent">{session.accuracy || 0}%</span></div><p className="mt-2 text-xs font-semibold text-secondary">{session.duration || 0} minutes · {session.timestamp ? new Date(session.timestamp).toLocaleDateString() : 'Recent session'}</p></div>)}</div> : <EmptyState title="Your rhythm starts here" message="Log your first study sprint and your Twin will begin spotting your pace and consistency." />}
+        </Card>
+      </section>
     </div>
   )
 }
@@ -155,7 +204,7 @@ const List = ({ items, icon: Icon = Check }) => (
     {items.map((item) => (
       <div key={item} className="flex items-start gap-3 rounded-2xl border border-app bg-elevated p-4">
         <Icon size={18} className="mt-0.5 shrink-0 text-success" strokeWidth={1.5} />
-        <p className="font-semibold leading-6 text-secondary">{item}</p>
+        <p className="font-semibold leading-6 text-secondary">{typeof item === 'string' ? item : item?.subject || item?.topic || item?.concept || 'Learning area'}</p>
       </div>
     ))}
   </div>

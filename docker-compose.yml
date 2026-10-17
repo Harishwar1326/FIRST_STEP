@@ -66,6 +66,12 @@ services:
       - DATABASE_URL=postgresql://firststep:firststep@postgres:5432/firststep
       - REDIS_URL=redis://redis:6379
       - AI_SERVICE_URL=http://ai-service:8000
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
+      - CHROMA_API_KEY=${CHROMA_API_KEY:-}
+      - CHROMA_TENANT=${CHROMA_TENANT:-}
+      - CHROMA_DATABASE=${CHROMA_DATABASE:-FIRST_STEP}
+      - CHROMA_HOST=${CHROMA_HOST:-api.trychroma.com}
       - JWT_SECRET=super_secret_firststep_development_jwt_key_123!
     depends_on:
       mongodb:
@@ -90,6 +96,12 @@ services:
       - PORT=8000
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
+      - CHROMA_API_KEY=${CHROMA_API_KEY:-}
+      - CHROMA_TENANT=${CHROMA_TENANT:-}
+      - CHROMA_DATABASE=${CHROMA_DATABASE:-FIRST_STEP}
+      - CHROMA_COLLECTION=${CHROMA_COLLECTION:-documents}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
     depends_on:
       - chromadb
     networks:
