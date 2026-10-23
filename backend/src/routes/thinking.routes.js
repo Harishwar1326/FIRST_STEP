@@ -1,11 +1,12 @@
 import express from 'express';
 import { thinkingController } from '../controllers/thinking.controller.js';
 import { authMiddleware } from '../middlewares/auth.middleware.js';
+import { validate, challengeSubmissionSchema } from '../utils/validators.js';
 
 const router = express.Router();
 
 router.get('/india-challenges', thinkingController.getIndiaThinkingChallenges);
-router.post('/india-challenges/:id/answer', thinkingController.submitIndiaThinkingAnswer);
+router.post('/india-challenges/:id/answer', validate(challengeSubmissionSchema), thinkingController.submitIndiaThinkingAnswer);
 router.post('/nearby', thinkingController.createThinkingLabNearby);
 router.get('/nearby', thinkingController.getThinkingLabNearby);
 router.post('/challenge/:id/answer', thinkingController.submitThinkingLabAnswer);
@@ -19,7 +20,7 @@ router.get('/knowledge/:id', thinkingController.getThinkingLabKnowledge);
 router.get('/progress', thinkingController.getThinkingLabProgress);
 
 router.get('/daily', thinkingController.getDailyChallenge);
-router.post('/submit', thinkingController.submitAnswer);
+router.post('/submit', validate(challengeSubmissionSchema), thinkingController.submitAnswer);
 router.get('/score', thinkingController.getThinkingScore);
 router.get('/history', thinkingController.getHistory);
 

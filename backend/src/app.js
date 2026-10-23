@@ -1,6 +1,8 @@
 import express from "express";
 import cors from "cors";
 import morgan from "morgan";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import rootRouter from "./routes/index.js";
 
 const app = express();
@@ -10,7 +12,22 @@ const corsOrigins = (process.env.CORS_ORIGINS || "*")
   .map((origin) => origin.trim())
   .filter(Boolean);
 
+// Rate Limiting
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: {
+    status: "error",
+    message: "Too many requests from this IP, please try again after 15 minutes",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use("/api/", apiLimiter);
+
 // Standard middlewares
+app.use(helmet());
 app.use(
   cors({
     origin: corsOrigins.includes("*") ? true : corsOrigins,

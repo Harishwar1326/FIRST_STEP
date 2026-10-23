@@ -20,7 +20,10 @@ export const userRepository = {
     return User.findByIdAndUpdate(userId, updateData, { new: true })
   },
 
-  async delete(userId) {
+  async delete(userId, requesterId, requesterRole) {
+    if (requesterRole !== 'admin' && userId !== requesterId) {
+      throw new Error('Unauthorized to delete this user')
+    }
     return User.findByIdAndDelete(userId)
   },
 }

@@ -1219,7 +1219,7 @@ export const thinkingService = {
   },
 
   async submitAnswer(userId, challengeId, answer) {
-    const challenge = await thinkingRepository.findChallengeById(challengeId)
+    const challenge = await thinkingRepository.findChallengeById(challengeId, userId)
     if (!challenge) {
       throw new Error('Challenge not found')
     }

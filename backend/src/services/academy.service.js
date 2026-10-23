@@ -119,6 +119,7 @@ export const academyService = {
     // Update flashcard with new rating
     const updatedCard = await academyRepository.updateFlashcardReview(
       cardId,
+      userId,
       rating,
     );
 

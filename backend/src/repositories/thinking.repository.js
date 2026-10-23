@@ -17,8 +17,8 @@ export const thinkingRepository = {
     return challenge
   },
 
-  async findChallengeById(challengeId) {
-    return Challenge.findById(challengeId)
+  async findChallengeById(challengeId, userId) {
+    return Challenge.findOne({ _id: challengeId, userId })
   },
 
   async findTodayChallenge(userId) {
@@ -31,9 +31,9 @@ export const thinkingRepository = {
     })
   },
 
-  async markChallengeCompleted(challengeId) {
-    return Challenge.findByIdAndUpdate(
-      challengeId,
+  async markChallengeCompleted(challengeId, userId) {
+    return Challenge.findOneAndUpdate(
+      { _id: challengeId, userId },
       { completed: true },
       { new: true }
     )
@@ -103,8 +103,8 @@ export const thinkingRepository = {
     return challenge
   },
 
-  async findThinkingChallengeById(id) {
-    return ThinkingChallenge.findById(id)
+  async findThinkingChallengeById(id, userId) {
+    return ThinkingChallenge.findOne({ _id: id, userId })
   },
 
   async findChallengeForKnowledgeItem(knowledgeItemId) {

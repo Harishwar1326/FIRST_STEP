@@ -40,10 +40,10 @@ export const academyRepository = {
     }).sort({ nextReview: 1 })
   },
 
-  async updateFlashcardReview(cardId, rating) {
+  async updateFlashcardReview(cardId, userId, rating) {
     // Calculate next review date based on spaced repetition algorithm
-    const card = await Flashcard.findById(cardId)
-    if (!card) throw new Error('Flashcard not found')
+    const card = await Flashcard.findOne({ _id: cardId, userId })
+    if (!card) throw new Error('Flashcard not found or unauthorized')
 
     const intervals = [1, 3, 7, 14, 30, 90] // days
     const currentIntervalIndex = card.intervalIndex || 0
@@ -60,9 +60,10 @@ export const academyRepository = {
     const nextReview = new Date()
     nextReview.setDate(nextReview.getDate() + nextInterval)
 
-    return Flashcard.findByIdAndUpdate(
-      cardId,
+    return Flashcard.findOneAndUpdate(
+      { _id: cardId, userId },
       {
+        lastReview: new Date(),
         lastReview: new Date(),
         nextReview,
         intervalIndex: rating >= 3 ? currentIntervalIndex + 1 : 0,

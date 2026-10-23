@@ -1,4 +1,5 @@
 import { twinService } from "../services/twin.service.js";
+import { asyncHandler } from "../utils/errorHandler.js";
 
 const defaultGuestUser = {
   id: "guest-learning-twin",
@@ -10,44 +11,44 @@ const defaultGuestUser = {
 const asTwinUser = (user) => (user && user.id ? user : defaultGuestUser);
 
 export const twinController = {
-  getProfile: async (req, res, next) => {
-    try {
-      const user = asTwinUser(req.user);
-      const profile = await twinService.getProfile(user.id, user.name);
-      res.status(200).json(profile);
-    } catch (error) {
-      next(error);
-    }
-  },
+  getProfile: asyncHandler(async (req, res) => {
+    const user = asTwinUser(req.user);
+    const profile = await twinService.getProfile(user.id, user.name);
+    res.status(200).json({
+      status: 'success',
+      data: profile,
+      message: 'Learning twin profile retrieved successfully'
+    });
+  }),
 
-  getAnalytics: async (req, res, next) => {
-    try {
-      const userId = asTwinUser(req.user).id;
-      const analytics = await twinService.getAnalytics(userId);
-      res.status(200).json(analytics);
-    } catch (error) {
-      next(error);
-    }
-  },
+  getAnalytics: asyncHandler(async (req, res) => {
+    const userId = asTwinUser(req.user).id;
+    const analytics = await twinService.getAnalytics(userId);
+    res.status(200).json({
+      status: 'success',
+      data: analytics,
+      message: 'Twin analytics retrieved successfully'
+    });
+  }),
 
-  getRecommendations: async (req, res, next) => {
-    try {
-      const userId = asTwinUser(req.user).id;
-      const recommendations = await twinService.getRecommendations(userId);
-      res.status(200).json(recommendations);
-    } catch (error) {
-      next(error);
-    }
-  },
+  getRecommendations: asyncHandler(async (req, res) => {
+    const userId = asTwinUser(req.user).id;
+    const recommendations = await twinService.getRecommendations(userId);
+    res.status(200).json({
+      status: 'success',
+      data: recommendations,
+      message: 'Twin recommendations retrieved successfully'
+    });
+  }),
 
-  updateProgress: async (req, res, next) => {
-    try {
-      const userId = req.user.id;
-      const progressData = req.body;
-      const result = await twinService.updateProgress(userId, progressData);
-      res.status(200).json(result);
-    } catch (error) {
-      next(error);
-    }
-  },
+  updateProgress: asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+    const progressData = req.body;
+    const result = await twinService.updateProgress(userId, progressData);
+    res.status(200).json({
+      status: 'success',
+      data: result,
+      message: 'Twin progress updated successfully'
+    });
+  }),
 };

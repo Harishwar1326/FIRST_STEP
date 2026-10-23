@@ -1,6 +1,7 @@
 import express from "express";
 import { academyController } from "../controllers/academy.controller.js";
 import { authMiddleware } from "../middlewares/auth.middleware.js";
+import { validate, situationSchema, flashcardReviewSchema } from '../utils/validators.js';
 
 const router = express.Router();
 
@@ -8,8 +9,8 @@ const router = express.Router();
 // for unauthenticated users; writes are keyed by x-guest-id header (persisted
 // in localStorage as academy_guest_id) and reconciled to the real user after
 // login. Auth-only endpoints live below router.use(authMiddleware).
-router.post("/situation", academyController.evaluateSituation);
-router.post("/technique/recommend", academyController.evaluateSituation);
+router.post("/situation", validate(situationSchema), academyController.evaluateSituation);
+router.post("/technique/recommend", validate(situationSchema), academyController.evaluateSituation);
 router.get("/techniques", academyController.getAllTechniques);
 router.get("/techniques/:techniqueId", academyController.getTechniqueById);
 
@@ -30,7 +31,7 @@ router.use(authMiddleware);
 router.get("/plan", academyController.getStudyPlan);
 router.get("/today", academyController.getTodayTasks);
 router.get("/flashcards", academyController.getFlashcards);
-router.post("/flashcards/review", academyController.submitFlashcardReview);
+router.post("/flashcards/review", validate(flashcardReviewSchema), academyController.submitFlashcardReview);
 router.get("/streak", academyController.getStreak);
 router.post("/streak/update", academyController.updateStreak);
 

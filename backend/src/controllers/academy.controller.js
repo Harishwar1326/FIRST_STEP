@@ -1,4 +1,5 @@
 import { academyService } from "../services/academy.service.js";
+import { asyncHandler, AppError } from "../utils/errorHandler.js";
 
 const DEFAULT_GUEST_ID_PREFIX = "guest-academy-";
 const pickGuestUserId = (req) => {
@@ -19,235 +20,256 @@ const EMPTY_PROGRESS_FALLBACK = {
 };
 
 export const academyController = {
-  getStudyPlan: async (req, res, next) => {
-    try {
-      const userId = req.user.id;
-      const plan = await academyService.getStudyPlan(userId);
-      res.status(200).json(plan);
-    } catch (error) {
-      next(error);
-    }
-  },
+  getStudyPlan: asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+    const plan = await academyService.getStudyPlan(userId);
+    res.status(200).json({
+      status: 'success',
+      data: plan,
+      message: 'Study plan retrieved successfully'
+    });
+  }),
 
-  getTodayTasks: async (req, res, next) => {
-    try {
-      const userId = req.user.id;
-      const tasks = await academyService.getTodayTasks(userId);
-      res.status(200).json(tasks);
-    } catch (error) {
-      next(error);
-    }
-  },
+  getTodayTasks: asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+    const tasks = await academyService.getTodayTasks(userId);
+    res.status(200).json({
+      status: 'success',
+      data: tasks,
+      message: 'Today\'s tasks retrieved successfully'
+    });
+  }),
 
-  getFlashcards: async (req, res, next) => {
-    try {
-      const userId = req.user.id;
-      const flashcards = await academyService.getFlashcards(userId);
-      res.status(200).json(flashcards);
-    } catch (error) {
-      next(error);
-    }
-  },
+  getFlashcards: asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+    const flashcards = await academyService.getFlashcards(userId);
+    res.status(200).json({
+      status: 'success',
+      data: flashcards,
+      message: 'Flashcards retrieved successfully'
+    });
+  }),
 
-  submitFlashcardReview: async (req, res, next) => {
-    try {
-      const userId = req.user.id;
-      const { cardId, rating } = req.body;
-      const result = await academyService.submitFlashcardReview(
-        userId,
-        cardId,
-        rating,
-      );
-      res.status(200).json(result);
-    } catch (error) {
-      next(error);
-    }
-  },
+  submitFlashcardReview: asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+    const { cardId, rating } = req.body;
+    const result = await academyService.submitFlashcardReview(
+      userId,
+      cardId,
+      rating,
+    );
+    res.status(200).json({
+      status: 'success',
+      data: result,
+      message: 'Flashcard review submitted successfully'
+    });
+  }),
 
-  getStreak: async (req, res, next) => {
-    try {
-      const userId = req.user.id;
-      const streak = await academyService.getStreak(userId);
-      res.status(200).json(streak);
-    } catch (error) {
-      next(error);
-    }
-  },
+  getStreak: asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+    const streak = await academyService.getStreak(userId);
+    res.status(200).json({
+      status: 'success',
+      data: streak,
+      message: 'Study streak retrieved successfully'
+    });
+  }),
 
-  updateStreak: async (req, res, next) => {
-    try {
-      const userId = req.user.id;
-      const result = await academyService.updateStreak(userId);
-      res.status(200).json(result);
-    } catch (error) {
-      next(error);
-    }
-  },
+  updateStreak: asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+    const result = await academyService.updateStreak(userId);
+    res.status(200).json({
+      status: 'success',
+      data: result,
+      message: 'Study streak updated successfully'
+    });
+  }),
 
-  getTechniqueRecommendation: async (req, res, next) => {
+  getTechniqueRecommendation: asyncHandler(async (req, res) => {
+    const userId = req.params.studentId || pickGuestUserId(req);
+    const subject = req.query.subject || req.body?.subject;
     try {
-      const userId = req.params.studentId || pickGuestUserId(req);
-      const subject = req.query.subject || req.body?.subject;
       const result = await academyService.getTechniqueRecommendation(
         userId,
         subject,
       );
-      res.status(200).json(result);
-    } catch (error) {
-      console.warn(
-        "[academy.controller] getTechniqueRecommendation fallback:",
-        error.message,
-      );
       res.status(200).json({
-        recommendedTechnique: {
-          id: "active-recall",
-          name: "Active Recall",
-          score: 85,
-          tagline: "Test yourself to lock concepts into memory",
-          category: "Retrieval & Memory",
+        status: 'success',
+        data: result,
+        message: 'Technique recommendation retrieved'
+      });
+    } catch (error) {
+      console.warn("[academy.controller] getTechniqueRecommendation fallback:", error.message);
+      res.status(200).json({
+        status: 'success',
+        data: {
+          recommendedTechnique: {
+            id: "active-recall",
+            name: "Active Recall",
+            score: 85,
+            tagline: "Test yourself to lock concepts into memory",
+            category: "Retrieval & Memory",
+          },
+          fallback: true,
         },
-        fallback: true,
+        message: 'Retrieved fallback technique recommendation'
       });
     }
-  },
+  }),
 
-  getStudentProfile: async (req, res, next) => {
+  getStudentProfile: asyncHandler(async (req, res) => {
+    const userId = req.params.studentId || pickGuestUserId(req);
     try {
-      const userId = req.params.studentId || pickGuestUserId(req);
       const result = await academyService.getStudentProfile(userId);
-      res.status(200).json(result);
-    } catch (error) {
-      console.warn(
-        "[academy.controller] getStudentProfile fallback:",
-        error.message,
-      );
       res.status(200).json({
-        studentId: pickGuestUserId(req),
-        dominantStyle: "Balanced",
-        strengthAreas: ["Memory retrieval"],
-        focusAreas: ["Consistent practice"],
-        recommendedPath:
-          "Start with the Situation Wizard to generate a tailored plan.",
-        fallback: true,
+        status: 'success',
+        data: result,
+        message: 'Student profile retrieved successfully'
+      });
+    } catch (error) {
+      console.warn("[academy.controller] getStudentProfile fallback:", error.message);
+      res.status(200).json({
+        status: 'success',
+        data: {
+          studentId: pickGuestUserId(req),
+          dominantStyle: "Balanced",
+          strengthAreas: ["Memory retrieval"],
+          focusAreas: ["Consistent practice"],
+          recommendedPath: "Start with the Situation Wizard to generate a tailored plan.",
+          fallback: true,
+        },
+        message: 'Retrieved fallback student profile'
       });
     }
-  },
+  }),
 
-  getAllTechniques: async (req, res, next) => {
-    try {
-      const result = academyService.getTechniquesCatalog();
-      res.status(200).json(result);
-    } catch (error) {
-      next(error);
+  getAllTechniques: asyncHandler(async (req, res) => {
+    const result = academyService.getTechniquesCatalog();
+    res.status(200).json({
+      status: 'success',
+      data: result,
+      message: 'Techniques catalog retrieved successfully'
+    });
+  }),
+
+  getTechniqueById: asyncHandler(async (req, res) => {
+    const { techniqueId } = req.params;
+    const result = academyService.getTechniqueById(techniqueId);
+    if (!result) {
+      throw new AppError("Technique not found", 404);
     }
-  },
+    res.status(200).json({
+      status: 'success',
+      data: result,
+      message: 'Technique details retrieved successfully'
+    });
+  }),
 
-  getTechniqueById: async (req, res, next) => {
+  recordTechniqueSession: asyncHandler(async (req, res) => {
+    const userId = pickGuestUserId(req);
+    const sessionData = req.body;
     try {
-      const { techniqueId } = req.params;
-      const result = academyService.getTechniqueById(techniqueId);
-      if (!result)
-        return res.status(404).json({ message: "Technique not found" });
-      res.status(200).json(result);
-    } catch (error) {
-      next(error);
-    }
-  },
-
-  recordTechniqueSession: async (req, res, next) => {
-    try {
-      const userId = pickGuestUserId(req);
-      const sessionData = req.body;
       const result = await academyService.recordTechniqueSession(
         userId,
         sessionData,
       );
-      res.status(200).json(result);
-    } catch (error) {
-      console.warn(
-        "[academy.controller] recordTechniqueSession fallback:",
-        error.message,
-      );
       res.status(200).json({
-        success: true,
-        session: {
-          _id: "guest-session-" + Date.now(),
-          guest: true,
-          saved: false,
-          ...req.body,
+        status: 'success',
+        data: result,
+        message: 'Technique session recorded successfully'
+      });
+    } catch (error) {
+      console.warn("[academy.controller] recordTechniqueSession fallback:", error.message);
+      res.status(200).json({
+        status: 'success',
+        data: {
+          success: true,
+          session: {
+            _id: "guest-session-" + Date.now(),
+            guest: true,
+            saved: false,
+            ...req.body,
+          },
+          fallback: true,
         },
-        fallback: true,
-        message:
-          "Session acknowledged locally; sync skipped due to service unavailability.",
+        message: 'Session acknowledged locally; sync skipped due to service unavailability'
       });
     }
-  },
+  }),
 
-  getProgress: async (req, res, next) => {
+  getProgress: asyncHandler(async (req, res) => {
+    const userId = req.params.studentId || pickGuestUserId(req);
     try {
-      const userId = req.params.studentId || pickGuestUserId(req);
       const result = await academyService.getStudentTechniqueProgress(userId);
-      res.status(200).json(result);
+      res.status(200).json({
+        status: 'success',
+        data: result,
+        message: 'Student progress retrieved successfully'
+      });
     } catch (error) {
       console.warn("[academy.controller] getProgress fallback:", error.message);
-      res
-        .status(200)
-        .json({
+      res.status(200).json({
+        status: 'success',
+        data: {
           ...EMPTY_PROGRESS_FALLBACK,
           studentId: pickGuestUserId(req),
           fallback: true,
-        });
+        },
+        message: 'Retrieved fallback progress data'
+      });
     }
-  },
+  }),
 
-  evaluateSituation: async (req, res, next) => {
-    try {
-      const userId = pickGuestUserId(req);
-      const situationInputs = req.body;
-      const result = await academyService.evaluateSituation(
-        userId,
-        situationInputs,
-      );
-      res.status(200).json(result);
-    } catch (error) {
-      next(error);
-    }
-  },
+  evaluateSituation: asyncHandler(async (req, res) => {
+    const userId = pickGuestUserId(req);
+    const situationInputs = req.body;
+    const result = await academyService.evaluateSituation(
+      userId,
+      situationInputs,
+    );
+    res.status(200).json({
+      status: 'success',
+      data: result,
+      message: 'Situation evaluation completed successfully'
+    });
+  }),
 
-  submitFeedback: async (req, res, next) => {
+  submitFeedback: asyncHandler(async (req, res) => {
+    const userId = pickGuestUserId(req);
+    const feedbackData = req.body;
     try {
-      const userId = pickGuestUserId(req);
-      const feedbackData = req.body;
       const result = await academyService.saveTechniqueFeedback(
         userId,
         feedbackData,
       );
-      res.status(200).json(result);
-    } catch (error) {
-      console.warn(
-        "[academy.controller] submitFeedback fallback:",
-        error.message,
-      );
       res.status(200).json({
-        success: true,
-        feedbackId: "guest-fb-" + Date.now(),
-        guest: true,
-        fallback: true,
-        message: "Feedback captured locally for later sync.",
+        status: 'success',
+        data: result,
+        message: 'Feedback submitted successfully'
+      });
+    } catch (error) {
+      console.warn("[academy.controller] submitFeedback fallback:", error.message);
+      res.status(200).json({
+        status: 'success',
+        data: {
+          success: true,
+          feedbackId: "guest-fb-" + Date.now(),
+          guest: true,
+          fallback: true,
+        },
+        message: 'Feedback captured locally for later sync'
       });
     }
-  },
+  }),
 
-  recordActivity: async (req, res, next) => {
-    try {
-      res
-        .status(200)
-        .json({
-          success: true,
-          message: "Activity signal logged successfully",
-        });
-    } catch (error) {
-      next(error);
-    }
-  },
+  recordActivity: asyncHandler(async (req, res) => {
+    res.status(200).json({
+      status: 'success',
+      data: {
+        success: true,
+        message: "Activity signal logged successfully",
+      },
+      message: 'Activity logged successfully'
+    });
+  }),
 };
