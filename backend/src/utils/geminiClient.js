@@ -29,6 +29,14 @@ const prepareUserContent = (userPayload, maxChars = 24000) => {
   return safeTruncate(raw, maxChars);
 };
 
+const resolveModel = (jsonMode) => {
+  const model = jsonMode ? process.env.GEMINI_JSON_MODEL : process.env.GEMINI_MODEL;
+  if (!model || model === "gemini-1.5-flash") {
+    return "gemini-2.5-flash";
+  }
+  return model;
+};
+
 export const callGeminiJson = async ({
   systemPrompt,
   userPayload,
@@ -40,9 +48,8 @@ export const callGeminiJson = async ({
   const apiKey = requestedApiKey || resolveGeminiKey();
   if (!apiKey) return null;
 
-  try {
-    const model = jsonMode ? GEMINI_JSON_MODEL : GEMINI_MODEL;
-    const endpoint = `${GEMINI_API_URL_BASE}/models/${model}:generateContent?key=${apiKey}`;
+  const tryCall = async (modelName) => {
+    const endpoint = `${process.env.GEMINI_API_URL_BASE || "https://generativelanguage.googleapis.com/v1beta"}/models/${modelName}:generateContent?key=${apiKey}`;
 
     const userContent = prepareUserContent(userPayload);
     const systemContent = systemPrompt && String(systemPrompt).trim();
@@ -79,20 +86,50 @@ export const callGeminiJson = async ({
     });
 
     const candidates = response.data?.candidates;
-    if (!Array.isArray(candidates) || candidates.length === 0) return null;
+    if (!Array.isArray(candidates) || candidates.length === 0) {
+      console.warn('[Gemini Client] No candidates in response:', response.data);
+      return null;
+    }
 
     const first = candidates[0];
     const parts = first.content?.parts;
-    if (!Array.isArray(parts) || parts.length === 0) return null;
+    if (!Array.isArray(parts) || parts.length === 0) {
+      console.warn('[Gemini Client] No parts in candidate:', first);
+      return null;
+    }
 
     const combined = parts
       .map((p) => (p && typeof p.text === "string" ? p.text : ""))
       .join(" ")
       .trim();
 
-    if (!combined) return null;
-    return parseJsonObject(combined);
-  } catch (_error) {
+    if (!combined) {
+      console.warn('[Gemini Client] Empty text in parts:', parts);
+      return null;
+    }
+
+    const parsed = parseJsonObject(combined);
+    if (!parsed) {
+      console.warn('[Gemini Client] Failed to parse JSON from text:', combined.slice(0, 200));
+    }
+    return parsed;
+  };
+
+  const primaryModel = resolveModel(jsonMode);
+  try {
+    return await tryCall(primaryModel);
+  } catch (error) {
+    console.warn(`[Gemini Client] Call failed with model ${primaryModel}: ${error.response?.data?.error?.message || error.message}`);
+    // If model not found (404), retry with gemini-2.5-flash or gemini-flash-latest
+    if (error.response?.status === 404 && primaryModel !== "gemini-2.5-flash") {
+      try {
+        console.info(`[Gemini Client] Retrying with gemini-2.5-flash...`);
+        return await tryCall("gemini-2.5-flash");
+      } catch (retryError) {
+        console.warn(`[Gemini Client] Retry failed: ${retryError.response?.data?.error?.message || retryError.message}`);
+        return null;
+      }
+    }
     return null;
   }
 };

@@ -38,7 +38,7 @@ router.post("/:id/mindmap", notesController.generateMindMap);
 router.post("/:id/questions", notesController.generateQuestions);
 
 // Chroma reindex endpoints (auth-only)
-router.post("/:id/reindex", notesController.reindexNote);
 router.post("/reindex/all", notesController.reindexAll);
+router.post("/:id/reindex", notesController.reindexNote);
 
 export default router;

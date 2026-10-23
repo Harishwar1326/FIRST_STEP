@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useQueryClient } from '@tanstack/react-query'
 import {
+  AlertTriangle,
   BarChart3,
   Beaker,
   BookMarked,
@@ -717,7 +718,7 @@ const AILearningEnginePanel = ({
       </div>
       {loading && (
         <div className="mt-3 flex items-center gap-2 text-[11px] font-black text-orange-700 bg-orange-50/80 rounded-xl px-3 py-2">
-          <RefreshCw size={13} className="animate-spin" /> Groq is generating structured JSON…
+          <RefreshCw size={13} className="animate-spin" /> Gemini AI is analyzing your notes…
         </div>
       )}
       {error && !loading && (
@@ -1143,7 +1144,7 @@ const ExplainTab = ({ explainAnswer, explainQuestion, setExplainQuestion, onRun 
       <div className="mt-2 flex items-center justify-between">
         <p className="text-[10px] font-bold text-stone-400">AI answers grounded in your notes.</p>
         <button type="button" onClick={() => onRun(explainQuestion)} className="organic-button !py-2 !px-4 !text-xs font-black">
-          Ask Groq →
+          Ask AI →
         </button>
       </div>
     </div>
@@ -1330,7 +1331,7 @@ const RevisionTab = ({ revision, minutes, setMinutes, onRun }) => (
       </>
     )}
     {!revision && (
-      <EmptyPanelCTA icon={TimerReset} title="No revision plan yet" desc="Pick a time budget above and Groq will build a plan around your weak concepts." button={`Build ${minutes}-min plan`} onClick={() => onRun(minutes)} />
+      <EmptyPanelCTA icon={TimerReset} title="No revision plan yet" desc="Pick a time budget above and Gemini AI will build a personalized plan around your weak concepts." button={`Build ${minutes}-min plan`} onClick={() => onRun(minutes)} />
     )}
   </div>
 )
