@@ -1,38 +1,11 @@
 import axios from 'axios'
+import { parseJsonObject } from './jsonParser.js'
+import { callOllamaJson } from './ollamaClient.js'
+
+export { parseJsonObject }
 
 const GROQ_API_URL = process.env.GROQ_API_URL || 'https://api.groq.com/openai/v1/chat/completions'
 const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.1-8b-instant'
-
-export const parseJsonObject = (raw) => {
-  if (!raw || typeof raw !== 'string') return null
-  let trimmed = raw.trim()
-  const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)
-  if (fenceMatch && fenceMatch[1]) {
-    trimmed = fenceMatch[1].trim()
-  }
-  const firstBrace = trimmed.indexOf('{')
-  const lastBrace = trimmed.lastIndexOf('}')
-  const firstBracket = trimmed.indexOf('[')
-  let candidate = trimmed
-  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    if (firstBracket === -1 || firstBrace < firstBracket) {
-      candidate = trimmed.slice(firstBrace, lastBrace + 1)
-    }
-  }
-  try {
-    return JSON.parse(candidate)
-  } catch (_first) {
-    try {
-      const safe = candidate
-        .replace(/,\s*([}\]])/g, '$1')
-        .replace(/\bNaN\b/g, 'null')
-        .replace(/\bInfinity\b/g, 'null')
-      return JSON.parse(safe)
-    } catch (_second) {
-      return null
-    }
-  }
-}
 
 export const callGroqJson = async ({
   systemPrompt,
@@ -40,7 +13,17 @@ export const callGroqJson = async ({
   maxTokens = 700,
   temperature = 0.3,
 }) => {
-  if (!process.env.GROQ_API_KEY) return null
+  const fallback = async (reason) => {
+    if (['false', '0', 'off'].includes(String(process.env.OLLAMA_FALLBACK_ENABLED || '').toLowerCase())) return null
+    console.info(`[Groq Client] ${reason}; trying local Ollama fallback`)
+    try {
+      return await callOllamaJson({ systemPrompt, userPayload, maxTokens, temperature })
+    } catch {
+      return null
+    }
+  }
+
+  if (!process.env.GROQ_API_KEY) return fallback('GROQ_API_KEY is not configured')
 
   try {
     const userContent = typeof userPayload === 'string'
@@ -69,9 +52,10 @@ export const callGroqJson = async ({
     )
 
     const content = response.data?.choices?.[0]?.message?.content
-    return parseJsonObject(content)
-  } catch (_error) {
-    return null
+    const parsed = parseJsonObject(content)
+    return parsed || fallback('Groq returned invalid or empty JSON')
+  } catch (error) {
+    return fallback(`Groq request failed (${error.response?.status || error.code || 'network error'})`)
   }
 }
 

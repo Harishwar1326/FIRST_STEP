@@ -22,8 +22,14 @@ const fetchNoteSafe = async (id, userId) => {
 
 export const notesController = {
   uploadDocument: asyncHandler(async (req, res) => {
-    const userId = req.user.id;
+    const userId = req.user?.id;
+    if (!userId) {
+      throw new AppError("Not authorized to upload notes. Please log in again.", 401);
+    }
     const file = req.file;
+    if (!file) {
+      throw new AppError("No file uploaded", 400);
+    }
     const result = await notesService.uploadDocument(userId, file, req.body);
     res.status(201).json({
       status: 'success',
@@ -188,6 +194,9 @@ export const notesController = {
     const result = await notesAIService.notesToLearning(userId, note, {
       snapshot: note.tldrawSnapshot || null,
     });
+    if (result?.flashcards?.length) {
+      await notesRepository.updateLearningResults(note._id, result);
+    }
     res.status(200).json({
       status: 'success',
       data: result,
@@ -323,103 +332,4 @@ export const notesController = {
       message: 'All notes reindexed successfully'
     });
   }),
-};
- {
-      next(error);
-    }
-  },
-
-  explainDrawing: async (req, res, next) => {
-    try {
-      const userId = resolveUserId(req);
-      const note = await fetchNoteSafe(req.params.id, req.user?.id || userId);
-      if (!note)
-        return res.status(404).json({ message: "Whiteboard not found" });
-      const result = await notesAIService.explainDrawing(userId, note);
-      res.status(200).json(result);
-    } catch (error) {
-      next(error);
-    }
-  },
-
-  personalizedRevision: async (req, res, next) => {
-    try {
-      const userId = resolveUserId(req);
-      const note = await fetchNoteSafe(req.params.id, req.user?.id || userId);
-      if (!note) return res.status(404).json({ message: "Note not found" });
-      const minutes = Number(req.body?.minutes) || 10;
-      const safeMinutes = [5, 10, 20].includes(minutes) ? minutes : 10;
-      const result = await notesAIService.personalizedRevision(
-        userId,
-        note,
-        safeMinutes,
-        req.body?.analysis || null,
-      );
-      res.status(200).json(result);
-    } catch (error) {
-      next(error);
-    }
-  },
-
-  knowledgeEvolution: async (req, res, next) => {
-    try {
-      const userId =
-        req.user?.id ||
-        (req.headers["x-guest-id"] || "").toString().trim() ||
-        `guest-notes-${Math.random().toString(36).slice(2, 10)}`;
-      const subject =
-        (req.query.subject || req.body?.subject || "").toString().trim() ||
-        null;
-      const result = await notesAIService.knowledgeEvolution(userId, subject);
-      res.status(200).json(result);
-    } catch (error) {
-      next(error);
-    }
-  },
-
-  semanticSearch: async (req, res, next) => {
-    try {
-      const userId = resolveUserId(req);
-      const query = (req.query.query || req.body?.query || "")
-        .toString()
-        .trim();
-      const options = {
-        limit: req.query.limit || req.body?.limit,
-        subject: req.query.subject || req.body?.subject,
-        folder: req.query.folder || req.body?.folder,
-        groupByNote:
-          req.query.groupByNote !== undefined
-            ? req.query.groupByNote !== "false"
-            : req.body?.groupByNote !== false,
-        denseWeight: req.query.denseWeight || req.body?.denseWeight,
-        sparseWeight: req.query.sparseWeight || req.body?.sparseWeight,
-        rrfK: req.query.rrfK || req.body?.rrfK,
-      };
-      const result = await notesService.semanticSearch(userId, query, options);
-      res.status(200).json(result);
-    } catch (error) {
-      next(error);
-    }
-  },
-
-  reindexNote: async (req, res, next) => {
-    try {
-      const { id } = req.params;
-      const userId = req.user.id;
-      const result = await notesService.reindexNote(userId, id);
-      res.status(200).json(result);
-    } catch (error) {
-      next(error);
-    }
-  },
-
-  reindexAll: async (req, res, next) => {
-    try {
-      const userId = req.user.id;
-      const result = await notesService.reindexAllForUser(userId);
-      res.status(200).json(result);
-    } catch (error) {
-      next(error);
-    }
-  },
 };

@@ -33,6 +33,10 @@ const validateResponses = (questions = [], responses = {}) => {
       return
     }
     if (question.type === 'number') {
+      if (value === null || value === undefined || String(value).trim() === '') {
+        errors[question.id] = 'This question is required.'
+        return
+      }
       const number = Number(value)
       if (!Number.isFinite(number) || number < question.min || number > question.max) {
         errors[question.id] = `Enter a value between ${question.min} and ${question.max}.`
@@ -50,19 +54,19 @@ const ProfileResult = ({ profile, onRetake }) => {
 
   const strengths = profile?.strengths || insights.strengths || []
   const areasToImprove = profile?.areasToImprove || insights.areasToImprove || []
-  const learningStyle = profile?.learningStyle || insights.learningPreference || 'Learning style is still being analyzed'
-  const studyAvailability = profile?.studyAvailability || insights.studyAvailability || '—'
-  const currentCapability = profile?.currentCapability || insights.currentCapability || 'Beginner'
-  const primaryGoal = profile?.primaryGoal || insights.primaryGoal || '—'
-  const overallScore = profile?.overallScore ?? profile?.assessmentScore ?? 0
+  const learningStyle = profile?.learningStyle || insights.learningPreference || 'Not provided'
+  const studyAvailability = profile?.studyAvailability || insights.studyAvailability || 'Not provided'
+  const currentCapability = profile?.currentCapability || insights.currentCapability || 'Not provided'
+  const primaryGoal = profile?.primaryGoal || insights.primaryGoal || 'Not provided'
+  const overallScore = profile?.overallScore ?? null
   const isDeveloping = Boolean(profile?.isDeveloping)
 
   const profileRows = [
-    ['Programming', skills.programming],
-    ['Problem Solving', skills.problemSolving],
-    ['Consistency', skills.consistency],
-    ['Confidence', skills.confidence],
-    ['Academic Performance', skills.academicPerformance],
+    ['Programming baseline', skills.programming],
+    ['Problem-solving indicator', skills.problemSolving],
+    ['Study consistency indicator', skills.consistency],
+    ['Self-reported confidence', skills.confidence],
+    ['Reported academic / activity performance', skills.academicPerformance],
   ]
 
   return (
@@ -74,13 +78,21 @@ const ProfileResult = ({ profile, onRetake }) => {
           </Badge>
           <span className="flex items-center gap-1.5 text-xs font-semibold text-secondary">
             <Activity size={14} className="text-accent" />
-            Backend & ML Pipeline Driven
+            Assessment answers and recorded activity
           </span>
         </div>
 
         <h1 className="mt-4 font-display text-4xl font-black tracking-tight text-primary sm:text-5xl">Your Learning Profile</h1>
         <p className="mt-3 text-sm font-semibold text-secondary">
-          Overall mastery score: {overallScore}%
+          {overallScore === null
+            ? 'Observed quiz average: not available yet'
+            : `Observed quiz and knowledge-check average: ${overallScore}%`}
+          {profile?.objectiveQuestionCount > 0 && (
+            <span className="ml-2">({profile.objectiveQuestionCount} scored questions)</span>
+          )}
+        </p>
+        <p className="mt-2 text-xs font-medium text-muted">
+          The overall score uses correct answers from quizzes and the knowledge check. Skill indicators may include survey answers and logged activity; they are guideposts, not standardized test results.
         </p>
 
         {isDeveloping && (
@@ -88,15 +100,16 @@ const ProfileResult = ({ profile, onRetake }) => {
             {profile?.statusMessage || 'Learning profile is still developing. Ongoing activity across lessons, quizzes, and Thinking Lab continues to refine your profile.'}
           </div>
         )}
-
         <div className="mt-8 space-y-5">
           {profileRows.map(([label, value]) => (
             <div key={label}>
               <div className="mb-2 flex items-center justify-between gap-3">
                 <p className="font-black text-primary">{label}</p>
-                <span className="text-sm font-black text-secondary">{value ?? 0}%</span>
+                <span className="text-sm font-black text-secondary">{value === null || value === undefined ? 'Not enough data' : `${value}%`}</span>
               </div>
-              <ProgressBar value={value ?? 0} />
+              {value === null || value === undefined
+                ? <p className="text-xs font-medium text-muted">Complete relevant activities to establish this indicator.</p>
+                : <ProgressBar value={value} />}
             </div>
           ))}
         </div>
@@ -106,6 +119,7 @@ const ProfileResult = ({ profile, onRetake }) => {
         <Card className="p-5 sm:p-6">
           <SectionHeader eyebrow="Strengths" title="Your strengths" />
           <ul className="space-y-2">
+            {strengths.length === 0 && <li className="text-sm font-semibold text-secondary">No strengths are established by the available evidence yet.</li>}
             {strengths.map((item) => (
               <li key={item} className="flex items-start gap-2 text-sm font-semibold text-primary">
                 <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-success" />
@@ -118,6 +132,7 @@ const ProfileResult = ({ profile, onRetake }) => {
         <Card className="p-5 sm:p-6">
           <SectionHeader eyebrow="Growth" title="Areas to improve" />
           <ul className="space-y-2">
+            {areasToImprove.length === 0 && <li className="text-sm font-semibold text-secondary">More scored activity is needed before identifying a growth area.</li>}
             {areasToImprove.map((item) => (
               <li key={item} className="flex items-start gap-2 text-sm font-semibold text-secondary">
                 <ArrowRight size={16} className="mt-0.5 shrink-0 text-accent" />
@@ -129,9 +144,9 @@ const ProfileResult = ({ profile, onRetake }) => {
       </div>
 
       <Card className="grid gap-4 p-5 sm:grid-cols-2 sm:p-6 lg:grid-cols-4">
-        <Insight label="Learning style" value={learningStyle} />
+        <Insight label="Learning preference" value={learningStyle} />
         <Insight label="Study availability" value={studyAvailability} />
-        <Insight label="Current capability" value={currentCapability} />
+        <Insight label="Self-reported programming level" value={currentCapability} />
         <Insight label="Primary goal" value={primaryGoal} />
       </Card>
 
@@ -236,7 +251,9 @@ const LearningAssessmentPage = () => {
 
   const completedAssessment = assessmentQuery.data?.assessment
   const hasCompletedAssessment = Boolean(completedAssessment?.completedAt || assessmentQuery.data?.completed)
-  const hasProfileData = Boolean(profileQuery.data && (profileQuery.data.overallScore !== undefined || profileQuery.data.skills))
+  const hasProfileData = profileQuery.data?.hasProfileData === false
+    ? false
+    : Boolean(profileQuery.data && (profileQuery.data.overallScore !== undefined || profileQuery.data.skills))
   const showResult = !retaking && (hasCompletedAssessment || hasProfileData)
 
   useEffect(() => {
@@ -247,7 +264,7 @@ const LearningAssessmentPage = () => {
 
   if (profileQuery.isLoading || (retaking && questionsQuery.isLoading)) {
     return (
-      <div className="world-page">
+      <div className="world-page learning-profile-page">
         <Skeleton className="h-40" />
         <Skeleton className="mt-4 h-96" />
         <p className="mt-4 text-sm font-semibold text-secondary">Loading learning profile from ML engine...</p>
@@ -257,7 +274,7 @@ const LearningAssessmentPage = () => {
 
   if (profileQuery.isError && !showResult && (!questionsQuery.data || questionsQuery.isError)) {
     return (
-      <div className="world-page">
+      <div className="world-page learning-profile-page">
         <EmptyState
           title="Unable to load learning profile"
           message={getErrorMessage(profileQuery.error || questionsQuery.error)}
@@ -268,14 +285,14 @@ const LearningAssessmentPage = () => {
 
   if (showResult && profileQuery.data) {
     return (
-      <div className="world-page">
+      <div className="world-page learning-profile-page">
         <ProfileResult profile={profileQuery.data} onRetake={() => setRetaking(true)} />
       </div>
     )
   }
 
   return (
-    <div className="world-page">
+    <div className="world-page learning-profile-page">
       <Card className="mb-6 p-6 sm:p-8">
         <Badge tone="accent">
           <Sparkles size={12} className="mr-1 inline" />

@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { unwrapApiResponse } from "../utils/unwrapApiResponse";
 
 const ACADEMY_GUEST_KEY = "academy_guest_id";
 const getAcademyGuestId = () => {
@@ -262,7 +263,9 @@ export const academyService = {
       const response = await api.post("/academy/situation", situationInputs, {
         headers: academyHeaders(),
       });
-      return response.data;
+      const result = unwrapApiResponse(response.data);
+      if (result?.recommendedTechnique) return result;
+      throw new Error("Situation evaluation returned no recommended technique");
     } catch (err) {
       console.warn(
         "Backend /academy/situation endpoint failed, attempting fallback endpoint:",
@@ -274,8 +277,9 @@ export const academyService = {
           situationInputs,
           { headers: academyHeaders() },
         );
-        if (fallbackRes.data && fallbackRes.data.recommendedTechnique) {
-          return fallbackRes.data;
+        const fallbackResult = unwrapApiResponse(fallbackRes.data);
+        if (fallbackResult?.recommendedTechnique) {
+          return fallbackResult;
         }
       } catch (err2) {
         console.warn(

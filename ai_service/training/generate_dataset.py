@@ -66,6 +66,16 @@ def generate_synthetic_dataset(num_samples: int = 10000, seed: int = 42) -> pd.D
         "Type H - Struggling but Consistent"
     ]
     profile_weights = [0.12, 0.15, 0.12, 0.14, 0.15, 0.10, 0.12, 0.10]
+    difficulty_by_profile = {
+        "Type A - High Performer": "Advanced",
+        "Type B - Hard Worker": "Intermediate",
+        "Type C - Fast Learner": "Advanced",
+        "Type D - Inconsistent Student": "Intermediate",
+        "Type E - Beginner": "Beginner",
+        "Type F - Exam-Focused Student": "Intermediate",
+        "Type G - Practical Learner": "Intermediate",
+        "Type H - Struggling but Consistent": "Beginner",
+    }
     
     selected_profiles = np.random.choice(profiles, size=num_samples, p=profile_weights)
     
@@ -375,8 +385,18 @@ def generate_synthetic_dataset(num_samples: int = 10000, seed: int = 42) -> pd.D
         strongest_sub = np.clip(avg_marks + np.random.uniform(4, 15), 40.0, 100.0)
         weakest_sub = np.clip(avg_marks - np.random.uniform(4, 18), 20.0, strongest_sub)
         
-        # Categorical choices
-        pref_mode = np.random.choice(learning_modes)
+        # Keep the synthetic style label learnable from the telemetry features
+        # supplied to the style model while retaining four distinct modes.
+        video_engagement = (avg_watch_pct + watch_rate) / 2.0
+        interaction_load = (pause_freq / 10.0 + ans_time_sec / 120.0) / 2.0
+        if video_engagement >= 0.75 and interaction_load < 0.30:
+            pref_mode = "Visual"
+        elif video_engagement < 0.75 and interaction_load < 0.30:
+            pref_mode = "Text/Reading"
+        elif video_engagement >= 0.75:
+            pref_mode = "Practical/Hands-on"
+        else:
+            pref_mode = "Interactive Quiz"
         goal_orient = np.random.choice(goal_orientations)
         
         # Activity volume variables
@@ -398,18 +418,16 @@ def generate_synthetic_dataset(num_samples: int = 10000, seed: int = 42) -> pd.D
         # ----------------------------------------------------
         # TARGET VARIABLE GENERATION (REALISTIC WEIGHTED BLEND + NOISE)
         # ----------------------------------------------------
-        # Overall Mastery Target
+        # Keep the mastery target aligned with the four measurements available
+        # to the artifact-backed runtime model.
         mastery_base = (
-            0.18 * (avg_marks / 100.0) +
-            0.18 * ((java_know + py_know + math_know + dsa_know) / 4.0) +
-            0.20 * quiz_accuracy +
-            0.15 * actual_prob_success_rate +
-            0.12 * consistency +
-            0.10 * retention +
-            0.07 * actual_completion_rate
+            0.40 * quiz_accuracy +
+            0.25 * actual_completion_rate +
+            0.20 * np.clip(avg_session_time / 120.0, 0.0, 1.0) +
+            0.15 * np.clip(rev_freq / 7.0, 0.0, 1.0)
         )
-        # Controlled random noise so relationship is strong but not deterministic
-        noise_mastery = np.random.normal(0, 0.035)
+        # Controlled noise keeps the synthetic relationship useful but imperfect.
+        noise_mastery = np.random.normal(0, 0.02)
         overall_mastery = round(float(np.clip(mastery_base + noise_mastery, 0.0, 1.0)), 4)
         
         # Topic-Level Mastery Targets
@@ -473,6 +491,7 @@ def generate_synthetic_dataset(num_samples: int = 10000, seed: int = 42) -> pd.D
             "study_hours_per_day": round(float(study_hours), 2),
             "study_consistency": round(float(consistency), 3),
             "preferred_learning_mode": pref_mode,
+            "recommended_difficulty": difficulty_by_profile[p_type],
             "session_duration": session_duration,
             "revision_frequency": round(float(rev_freq), 2),
             

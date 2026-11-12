@@ -1,4 +1,5 @@
 import { api } from './api'
+import { unwrapApiResponse } from '../utils/unwrapApiResponse'
 
 const GUEST_KEY = 'smart_notes_guest_id'
 const getGuestId = () => {
@@ -14,8 +15,10 @@ const getGuestId = () => {
   }
 }
 const headers = () => ({ 'x-guest-id': getGuestId() })
-const post = (url, body) => api.post(url, body || {}, { headers: headers() }).then((r) => r.data)
-const get = (url, params) => api.get(url, { headers: headers(), params }).then((r) => r.data)
+const post = (url, body) =>
+  api.post(url, body || {}, { headers: headers() }).then((r) => unwrapApiResponse(r.data))
+const get = (url, params) =>
+  api.get(url, { headers: headers(), params }).then((r) => unwrapApiResponse(r.data))
 
 // ============== CLIENT-SIDE STATIC FALLBACKS (same JSON shapes the backend returns) ==============
 const fallbackAnalyze = (note) => {

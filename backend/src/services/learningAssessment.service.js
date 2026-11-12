@@ -55,8 +55,13 @@ const learningPreferenceLabel = (value) => {
   return map[value] || value || 'Mixed learning'
 }
 
-const validateResponses = (responses = {}) => {
+export const validateResponses = (responses = {}) => {
   const errors = []
+  const knownQuestionIds = new Set(LEARNING_ASSESSMENT_QUESTIONS.map((question) => question.id))
+
+  Object.keys(responses).forEach((key) => {
+    if (!knownQuestionIds.has(key)) errors.push(`Unexpected assessment response: ${key}.`)
+  })
 
   LEARNING_ASSESSMENT_QUESTIONS.forEach((question) => {
     const value = responses[question.id]
@@ -65,11 +70,25 @@ const validateResponses = (responses = {}) => {
     if (question.type === 'multi') {
       if (!Array.isArray(value) || !value.length) {
         errors.push(`${question.label} is required.`)
+      } else if (
+        !question.options ||
+        value.some((item) => typeof item !== 'string' || !question.options.includes(item)) ||
+        new Set(value).size !== value.length
+      ) {
+        errors.push(`Invalid options selected for ${question.id}.`)
       }
       return
     }
 
     if (question.type === 'number') {
+      if (
+        (typeof value !== 'number' && typeof value !== 'string') ||
+        value === null ||
+        String(value).trim() === ''
+      ) {
+        errors.push(`${question.label} is required.`)
+        return
+      }
       const number = Number(value)
       if (!Number.isFinite(number) || number < question.min || number > question.max) {
         errors.push(`${question.label} must be between ${question.min} and ${question.max}.`)
@@ -77,13 +96,16 @@ const validateResponses = (responses = {}) => {
       return
     }
 
-    if (!String(value || '').trim()) {
+    if (typeof value !== 'string' || !value.trim()) {
       errors.push(`${question.label} is required.`)
       return
     }
 
     if (question.type === 'single' && question.options && !question.options.includes(value)) {
       errors.push(`Invalid option selected for ${question.id}.`)
+    }
+    if (question.type === 'text' && value.length > 500) {
+      errors.push(`${question.label} must be 500 characters or fewer.`)
     }
   })
 

@@ -31,6 +31,8 @@ const signToken = (user) =>
 
 export const authService = {
   async register({ name, email, password }) {
+    name = name.trim();
+    email = email.trim().toLowerCase();
     // Check if user already exists in PostgreSQL
     const existingUser = await userSqlRepository.findByEmail(email);
     if (existingUser) {
@@ -40,12 +42,17 @@ export const authService = {
     }
 
     // Create user in PostgreSQL (password hashing handled in repository)
-    const user = await userSqlRepository.create({
-      name,
-      email,
-      password,
-      role: "student",
-    });
+    let user;
+    try {
+      user = await userSqlRepository.create({ name, email, password, role: "student" });
+    } catch (error) {
+      if (error.code === '23505') {
+        const duplicateError = new Error("User already exists with this email address");
+        duplicateError.statusCode = 409;
+        throw duplicateError;
+      }
+      throw error;
+    }
 
     const token = signToken(user);
 
@@ -77,6 +84,7 @@ export const authService = {
   },
 
   async login({ email, password }) {
+    email = email.trim().toLowerCase();
     // Find user in PostgreSQL
     const user = await userSqlRepository.findByEmail(email);
     if (!user) {
@@ -138,6 +146,10 @@ export const authService = {
       return null;
     }
 
-    return userSqlRepository.ensureAdmin({ name, email, password });
+    const admin = await userSqlRepository.ensureAdmin({ name, email, password });
+    if (!admin) {
+      console.warn('Configured admin email already belongs to a non-admin account; no account was changed.');
+    }
+    return admin;
   },
 };

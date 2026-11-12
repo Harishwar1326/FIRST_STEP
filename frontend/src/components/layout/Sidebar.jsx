@@ -48,7 +48,7 @@ const SidebarLink = ({ item }) => (
       <>
         <span className={`absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-accent transition ${isActive ? 'opacity-100' : 'opacity-0'}`} />
         <item.icon size={20} strokeWidth={1.5} className="shrink-0" />
-        <span className="whitespace-nowrap opacity-0 transition group-hover/sidebar:opacity-100">{item.label}</span>
+        <span className="whitespace-nowrap">{item.label}</span>
       </>
     )}
   </NavLink>
@@ -62,12 +62,12 @@ const Sidebar = () => {
 
   return (
     <>
-      <aside className="group/sidebar sticky top-0 z-40 hidden h-screen w-[72px] shrink-0 flex-col border-r border-app bg-surface transition-[width] duration-300 hover:w-64 lg:flex">
+      <aside className="group/sidebar sticky top-0 z-40 hidden h-screen w-64 shrink-0 flex-col border-r border-app bg-surface/90 shadow-[10px_0_34px_rgba(35,74,68,.05)] backdrop-blur lg:flex">
         <div className="flex h-16 items-center gap-3 border-b border-app px-4">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent font-display text-sm font-black text-white">
             FS
           </div>
-          <div className="min-w-0 opacity-0 transition group-hover/sidebar:opacity-100">
+          <div className="min-w-0">
             <p className="font-display text-sm font-black text-primary">FirstStep</p>
             <p className="text-[11px] font-semibold text-muted">Next step learning</p>
           </div>
@@ -86,7 +86,7 @@ const Sidebar = () => {
             className="group flex w-full items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-sm font-bold text-secondary transition hover:border-app hover:bg-elevated hover:text-primary focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-accent/25"
           >
             {theme === 'dark' ? <Sun size={20} strokeWidth={1.5} /> : <Moon size={20} strokeWidth={1.5} />}
-            <span className="whitespace-nowrap opacity-0 transition group-hover/sidebar:opacity-100">
+            <span className="whitespace-nowrap">
               {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
             </span>
           </button>
@@ -96,7 +96,7 @@ const Sidebar = () => {
             className="group flex w-full items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-sm font-bold text-secondary transition hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-300 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-accent/25"
           >
             <LogOut size={20} strokeWidth={1.5} />
-            <span className="whitespace-nowrap opacity-0 transition group-hover/sidebar:opacity-100">Logout</span>
+            <span className="whitespace-nowrap">Logout</span>
           </button>
         </div>
       </aside>

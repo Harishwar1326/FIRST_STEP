@@ -1,16 +1,12 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+import asyncio
+from pydantic import BaseModel, Field, model_validator, constr
 from typing import Dict, List, Optional
 from app.pipelines.learning_engine_pipeline import LearningEnginePipeline
 try:
     from app.routers.document_router import document_pipeline
 except ImportError:
     document_pipeline = None
-from app.core.config import settings
-try:
-    import google.generativeai as genai
-except ImportError:
-    genai = None
 import logging
 
 logger = logging.getLogger("ai_service")
@@ -18,23 +14,65 @@ logger = logging.getLogger("ai_service")
 router = APIRouter(prefix="/learning", tags=["Adaptive Learning Engine"])
 learning_pipeline = LearningEnginePipeline()
 
+class RecommendationCandidate(BaseModel):
+    id: str = Field(min_length=1, max_length=160)
+    title: str = Field(min_length=1, max_length=180)
+    reason: str = Field(min_length=1, max_length=300)
+    lessonId: str = Field(min_length=1, max_length=160)
+    subject: str = Field(default="", max_length=100)
+    type: str = Field(default="start", max_length=30)
+
+class RecommendationEvidence(BaseModel):
+    averageQuizScore: Optional[float] = Field(default=None, ge=0, le=100)
+    weakTopics: List[constr(max_length=120)] = Field(default_factory=list, max_length=8)
+    lessonsStarted: Optional[int] = Field(default=None, ge=0, le=10000)
+    lessonsCompleted: Optional[int] = Field(default=None, ge=0, le=10000)
+    primaryGoal: Optional[str] = Field(default=None, max_length=120)
+    modelDifficulty: Optional[str] = Field(default=None, max_length=20)
+    modelTrainingData: Optional[str] = Field(default=None, max_length=40)
+
+class AnalyzeRecommendationsRequest(BaseModel):
+    evidence: RecommendationEvidence
+    candidates: List[RecommendationCandidate] = Field(min_length=1, max_length=8)
+
 class PredictProfileRequest(BaseModel):
-    quizScore: Optional[float] = 75.0
-    taskCompletion: Optional[float] = 0.8
-    studyTime: Optional[float] = 20.0
-    revisionCount: Optional[int] = 1
-    daysActive: Optional[float] = 5.0
-    averageWatchPercentage: Optional[float] = 0.5
-    pauseFrequency: Optional[float] = 1.0
-    videoWatchRate: Optional[float] = 0.5
-    averageAnswerTime: Optional[float] = 30.0
-    confidenceLevel: Optional[float] = 3.0
+    quizScore: Optional[float] = Field(default=None, ge=0, le=100)
+    quizAccuracy: Optional[float] = Field(default=None, ge=0, le=100)
+    lessonCompletionRate: Optional[float] = Field(default=None, ge=0, le=100)
+    studyTime: Optional[float] = Field(default=None, ge=0, le=1440)
+    revisionCount: Optional[int] = Field(default=None, ge=0, le=1000)
+    daysActive: Optional[float] = Field(default=None, ge=0, le=3650)
+    averageWatchPercentage: Optional[float] = Field(default=None, ge=0, le=100)
+    pauseFrequency: Optional[float] = Field(default=None, ge=0, le=1000)
+    videoWatchRate: Optional[float] = Field(default=None, ge=0, le=100)
+    averageAnswerTime: Optional[float] = Field(default=None, ge=0, le=86400)
+    confidenceLevel: Optional[float] = Field(default=None, ge=0, le=100)
+    # Backwards compatible input name; semantically this must be lesson
+    # completion, not a fabricated task success score.
+    taskCompletion: Optional[float] = Field(default=None, ge=0, le=100)
+
+    @model_validator(mode="after")
+    def require_learning_evidence(self):
+        evidence_fields = (
+            self.quizScore, self.quizAccuracy, self.lessonCompletionRate,
+            self.taskCompletion, self.studyTime, self.revisionCount, self.daysActive,
+        )
+        if all(value is None for value in evidence_fields):
+            raise ValueError("At least one measured learning activity or assessment value is required")
+        return self
     # Backwards compatibility fields
     daysSinceLastRevision: Optional[float] = None
     readingSpeed: Optional[float] = None
     drawingActivity: Optional[float] = None
     videoDurationRatio: Optional[float] = None
     notesLength: Optional[float] = None
+
+class StudentLearningEvidence(BaseModel):
+    recentQuizScore: Optional[float] = Field(default=None, ge=0, le=100)
+    weakConcepts: List[constr(max_length=120)] = Field(default_factory=list, max_length=5)
+    modelDifficulty: Optional[str] = Field(default=None, max_length=20)
+    modelScoreStatus: Optional[str] = Field(default=None, max_length=40)
+
 
 class GenerateContentRequest(BaseModel):
     type: str # "notes", "flashcards", "quiz"
@@ -43,6 +81,7 @@ class GenerateContentRequest(BaseModel):
     masteryLevel: Optional[str] = "Intermediate"
     weakConcepts: Optional[List[str]] = []
     mistakeConcepts: Optional[List[str]] = []
+    studentEvidence: Optional[StudentLearningEvidence] = None
 
 class AskRequest(BaseModel):
     question: str
@@ -60,6 +99,21 @@ async def predict_profile(request: PredictProfileRequest):
         logger.error(f"Failed to predict learning profile: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/analyze-recommendations")
+async def analyze_recommendations(request: AnalyzeRecommendationsRequest):
+    """Rank only real, backend-selected lesson actions using bounded evidence."""
+    try:
+        result = await learning_pipeline.analyze_learning_recommendations(
+            request.evidence.model_dump(),
+            [candidate.model_dump() for candidate in request.candidates],
+        )
+        allowed_ids = {candidate.id for candidate in request.candidates}
+        result["items"] = [item for item in result.get("items", []) if item.get("id") in allowed_ids]
+        return result
+    except Exception as e:
+        logger.error("Recommendation analysis failed: %s", str(e))
+        raise HTTPException(status_code=500, detail="Recommendation analysis failed")
+
 @router.post("/generate-content")
 async def generate_content(request: GenerateContentRequest):
     """Generate personalized learning content (notes, flashcards, or diagnostic quizzes)"""
@@ -71,7 +125,8 @@ async def generate_content(request: GenerateContentRequest):
             notes_data = await learning_pipeline.generate_personalized_notes(
                 request.lessonTitle,
                 request.lessonContent,
-                request.masteryLevel
+                request.masteryLevel,
+                request.studentEvidence.model_dump() if request.studentEvidence else None,
             )
             return notes_data
         elif content_type == "flashcards":
@@ -108,13 +163,10 @@ async def ask_from_documents(request: AskRequest):
             f"Question: {question}\n\nSources:\n{context}"
         )
 
-        if learning_pipeline.gemini_enabled:
-            model = genai.GenerativeModel(settings.GEMINI_MODEL)
-            response = model.generate_content(prompt)
-            answer = response.text.strip()
-            generated_by = "Gemini"
+        if learning_pipeline.llm_fallback_enabled:
+            answer, generated_by = await asyncio.to_thread(learning_pipeline.generate_text_with_provider, prompt)
         else:
-            answer = "Gemini is not configured. Retrieved sources are available for review."
+            answer = "AI generation is not configured. Retrieved sources are available for review."
             generated_by = "retrieval-only"
 
         return {

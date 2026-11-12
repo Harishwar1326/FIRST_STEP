@@ -1,17 +1,19 @@
 import express from 'express';
 import { thinkingController } from '../controllers/thinking.controller.js';
 import { authMiddleware } from '../middlewares/auth.middleware.js';
-import { validate, challengeSubmissionSchema } from '../utils/validators.js';
+import { validate, challengeSubmissionSchema, indiaChallengeAnswerSchema, thinkingLabAnswerSchema, nearbyDiscoverySchema } from '../utils/validators.js';
 
 const router = express.Router();
 
-router.get('/india-challenges', thinkingController.getIndiaThinkingChallenges);
-router.post('/india-challenges/:id/answer', validate(challengeSubmissionSchema), thinkingController.submitIndiaThinkingAnswer);
-router.post('/nearby', thinkingController.createThinkingLabNearby);
-router.get('/nearby', thinkingController.getThinkingLabNearby);
-router.post('/challenge/:id/answer', thinkingController.submitThinkingLabAnswer);
-
+// Thinking Lab is a protected student feature; writes and progress are
+// always associated with the authenticated account.
 router.use(authMiddleware);
+
+router.get('/india-challenges', thinkingController.getIndiaThinkingChallenges);
+router.post('/india-challenges/:id/answer', validate(indiaChallengeAnswerSchema), thinkingController.submitIndiaThinkingAnswer);
+router.post('/nearby', validate(nearbyDiscoverySchema), thinkingController.createThinkingLabNearby);
+router.get('/nearby', thinkingController.getThinkingLabNearby);
+router.post('/challenge/:id/answer', validate(thinkingLabAnswerSchema), thinkingController.submitThinkingLabAnswer);
 
 router.get('/feed', thinkingController.getThinkingLabFeed);
 router.get('/careers', thinkingController.getThinkingLabCareers);

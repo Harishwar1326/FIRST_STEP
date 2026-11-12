@@ -5,8 +5,31 @@ import {
   StudentTechniquePerformance,
   TechniqueFeedback,
 } from "../models/academy.model.js";
+import mongoose from "mongoose";
 import LearningProfile from "../models/learningProfile.model.js";
 import { LEARNING_TECHNIQUES } from "../data/learningTechniques.data.js";
+
+const ownerId = (userId) => String(userId ?? "");
+const ownerQuery = (userId) => {
+  const id = ownerId(userId);
+  const values = [id];
+  if (mongoose.Types.ObjectId.isValid(id)) values.push(new mongoose.Types.ObjectId(id));
+  return { userId: { $in: values } };
+};
+
+export const observedQuizMetrics = (quizScoreBefore, quizScoreAfter) => {
+  const before = Number(quizScoreBefore)
+  const after = Number(quizScoreAfter)
+  const hasBefore = quizScoreBefore !== undefined && quizScoreBefore !== null && Number.isFinite(before) && before >= 0 && before <= 100
+  const hasAfter = quizScoreAfter !== undefined && quizScoreAfter !== null && Number.isFinite(after) && after >= 0 && after <= 100
+  const metrics = {}
+  if (hasBefore) metrics.avgQuizScoreBefore = before
+  if (hasAfter) metrics.avgQuizScoreAfter = after
+  if (hasBefore && hasAfter && before > 0) {
+    metrics.retentionImprovement = Math.round(((after - before) / before) * 100)
+  }
+  return metrics
+}
 
 export const studyTechniqueEngineService = {
   getTechniquesCatalog() {
@@ -36,7 +59,7 @@ export const studyTechniqueEngineService = {
     let situationDoc = null;
     try {
       situationDoc = await StudentLearningSituation.create({
-        userId,
+        userId: ownerId(userId),
         timeAvailable,
         goal,
         subject,
@@ -206,7 +229,7 @@ export const studyTechniqueEngineService = {
     // Persist recommendation record
     try {
       await TechniqueRecommendation.create({
-        userId,
+        userId: ownerId(userId),
         primaryTechnique: primary.name,
         primaryScore: primary.score,
         reason: whyReason,
@@ -385,11 +408,9 @@ export const studyTechniqueEngineService = {
    */
   async calculateStudentProfile(userId) {
     try {
-      const performances = await StudentTechniquePerformance.find({
-        userId,
-      }).limit(12);
-      const sessions = await TechniqueSession.find({ userId }).limit(30);
-      const feedbacks = await TechniqueFeedback.find({ userId }).limit(20);
+      const performances = await StudentTechniquePerformance.find(ownerQuery(userId)).limit(12);
+      const sessions = await TechniqueSession.find(ownerQuery(userId)).limit(30);
+      const feedbacks = await TechniqueFeedback.find(ownerQuery(userId)).limit(20);
 
       const totalMinutes = sessions.reduce(
         (sum, s) => sum + (s.durationMinutes || 0),
@@ -490,7 +511,7 @@ export const studyTechniqueEngineService = {
     } = feedbackData;
     try {
       const feedback = await TechniqueFeedback.create({
-        userId,
+        userId: ownerId(userId),
         techniqueId,
         sessionId,
         usefulnessRating,
@@ -544,14 +565,14 @@ export const studyTechniqueEngineService = {
 
     try {
       const session = await TechniqueSession.create({
-        userId,
+        userId: ownerId(userId),
         techniqueId,
         techniqueName: resolvedName,
         subject: subject || "General",
         topic: topic || "Lesson Module",
         durationMinutes: durationMinutes || 15,
         activityType: activityType || "15min",
-        feedbackScore: feedbackScore || 4,
+        feedbackScore,
         notesCreated,
         quizScoreBefore,
         quizScoreAfter,
@@ -560,33 +581,38 @@ export const studyTechniqueEngineService = {
       let perf;
       try {
         perf = await StudentTechniquePerformance.findOne({
-          userId,
+          ...ownerQuery(userId),
           techniqueId,
         });
         if (!perf) {
           perf = new StudentTechniquePerformance({
-            userId,
+            userId: ownerId(userId),
             techniqueId,
             sessionCount: 1,
             totalTimeSpentMinutes: durationMinutes || 15,
-            avgQuizScoreBefore: quizScoreBefore || 60,
-            avgQuizScoreAfter: quizScoreAfter || 75,
-            retentionImprovement:
-              quizScoreAfter && quizScoreBefore
-                ? Math.round(
-                    ((quizScoreAfter - quizScoreBefore) / quizScoreBefore) *
-                      100,
-                  )
-                : 15,
             lastUsedAt: new Date(),
+            ...observedQuizMetrics(quizScoreBefore, quizScoreAfter),
           });
         } else {
+          const previousSessionCount = Math.max(1, perf.sessionCount || 1)
           perf.sessionCount += 1;
           perf.totalTimeSpentMinutes += durationMinutes || 15;
-          if (quizScoreAfter)
-            perf.avgQuizScoreAfter = Math.round(
-              (perf.avgQuizScoreAfter + quizScoreAfter) / 2,
-            );
+          const metrics = observedQuizMetrics(quizScoreBefore, quizScoreAfter)
+          if (metrics.avgQuizScoreBefore !== undefined) {
+            perf.avgQuizScoreBefore = perf.avgQuizScoreBefore === undefined
+              ? metrics.avgQuizScoreBefore
+              : Math.round(((perf.avgQuizScoreBefore * previousSessionCount) + metrics.avgQuizScoreBefore) / (previousSessionCount + 1))
+          }
+          if (metrics.avgQuizScoreAfter !== undefined) {
+            perf.avgQuizScoreAfter = perf.avgQuizScoreAfter === undefined
+              ? metrics.avgQuizScoreAfter
+              : Math.round(((perf.avgQuizScoreAfter * previousSessionCount) + metrics.avgQuizScoreAfter) / (previousSessionCount + 1))
+          }
+          if (metrics.retentionImprovement !== undefined) {
+            perf.retentionImprovement = perf.retentionImprovement === undefined
+              ? metrics.retentionImprovement
+              : Math.round(((perf.retentionImprovement * previousSessionCount) + metrics.retentionImprovement) / (previousSessionCount + 1))
+          }
           perf.lastUsedAt = new Date();
         }
         await perf.save();
@@ -626,18 +652,16 @@ export const studyTechniqueEngineService = {
    */
   async getStudentTechniqueProgress(userId) {
     try {
-      const sessions = await TechniqueSession.find({ userId })
+      const sessions = await TechniqueSession.find(ownerQuery(userId))
         .sort({ createdAt: -1 })
         .limit(20)
         .lean();
-      const performances = await StudentTechniquePerformance.find({
-        userId,
-      }).lean();
-      const recommendations = await TechniqueRecommendation.find({ userId })
+      const performances = await StudentTechniquePerformance.find(ownerQuery(userId)).lean();
+      const recommendations = await TechniqueRecommendation.find(ownerQuery(userId))
         .sort({ createdAt: -1 })
         .limit(5)
         .lean();
-      const feedbacks = await TechniqueFeedback.find({ userId })
+      const feedbacks = await TechniqueFeedback.find(ownerQuery(userId))
         .sort({ createdAt: -1 })
         .limit(10)
         .lean();

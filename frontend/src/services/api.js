@@ -1,8 +1,10 @@
 import axios from "axios";
+import { unwrapApiResponse } from "../utils/unwrapApiResponse";
 
+// In dev, use the Vite `/api` proxy (see vite.config.js) to avoid cross-origin + CORS issues.
 const API_BASE_URL =
   import.meta.env.VITE_API_URL ||
-  (import.meta.env.DEV ? "http://localhost:5000/api/v1" : null);
+  (import.meta.env.DEV ? "/api/v1" : null);
 
 if (!API_BASE_URL) {
   throw new Error("VITE_API_URL must be configured for production builds");
@@ -32,7 +34,10 @@ api.interceptors.request.use(
 
 // Response interceptor
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    response.data = unwrapApiResponse(response.data);
+    return response;
+  },
   (error) => {
     const requestUrl = error.config?.url || "";
 

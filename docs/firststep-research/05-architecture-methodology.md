@@ -81,7 +81,7 @@ flowchart LR
     I --> O[Profile outputs]
 ```
 
-**Figure 4.** Training and inference pipeline. The audit found that runtime feature meanings do not fully match training columns for retention and style.
+**Figure 4.** Training and inference pipeline. Artifact-backed inference follows the training feature order; the emergency in-memory retention and style models use different feature meanings and are not schema-compatible.
 
 ## Methodology reconstructed from source
 

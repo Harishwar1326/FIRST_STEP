@@ -1,14 +1,7 @@
 import { learningAcademyService } from '../services/learningAcademy.service.js';
 import { asyncHandler } from '../utils/errorHandler.js';
 
-const defaultGuestUser = {
-  id: 'guest-learning-academy',
-  email: 'guest@example.com',
-  name: 'Guest Student',
-  role: 'student',
-}
-
-const asAcademyUser = (user) => user && user.id ? user : defaultGuestUser
+const asAcademyUser = (user) => user && user.id ? user : null
 
 const pickGuestHeaders = (req) => ({
   guestId: req.headers['x-guest-id']
@@ -114,7 +107,8 @@ export const learningAcademyController = {
   resolveMisconceptionFixed: asyncHandler(async (req, res) => {
     const user = asAcademyUser(req.user);
     const { activityId } = req.body || {};
-    const result = await learningAcademyService.resolveMisconceptionFixed({ user, activityId });
+    const { guestId, sessionId } = pickGuestHeaders(req);
+    const result = await learningAcademyService.resolveMisconceptionFixed({ user, activityId, guestId, sessionId });
     res.status(200).json({
       status: 'success',
       data: result,
@@ -138,14 +132,14 @@ export const learningAcademyController = {
 
   markStageCompleted: asyncHandler(async (req, res) => {
     const user = asAcademyUser(req.user);
-    const { activityId, stage, sessionId: sessionIdBody, guestId: guestIdBody, topic } = req.body || {};
-    const headers = pickGuestHeaders(req);
+    const { activityId, stage, topic } = req.body || {};
+    const { guestId, sessionId } = pickGuestHeaders(req);
     const result = await learningAcademyService.markStageCompleted({
       user,
       activityId,
       stage,
-      sessionId: sessionIdBody || headers.sessionId,
-      guestId: guestIdBody || headers.guestId,
+      sessionId,
+      guestId,
       topic,
     });
     res.status(200).json({

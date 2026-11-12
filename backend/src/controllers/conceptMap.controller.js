@@ -11,4 +11,15 @@ export const conceptMapController = {
       message: 'Concept map generated successfully'
     });
   }),
+
+  explainEntity: asyncHandler(async (req, res) => {
+    const details = await conceptMapService.explainEntity({
+      concept: req.body?.concept,
+      entity: req.body?.entity,
+      type: req.body?.type,
+      definition: req.body?.definition,
+      connectedEntities: req.body?.connectedEntities,
+    });
+    res.status(200).json({ status: "success", data: details });
+  }),
 };

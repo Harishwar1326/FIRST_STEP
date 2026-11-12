@@ -1,7 +1,7 @@
 import { programmingLearningService } from '../services/programmingLearning.service.js'
 import { asyncHandler } from '../utils/errorHandler.js'
 
-const getUserId = (req) => String(req.user?.id || req.user?._id || 'demo-user')
+const getUserId = (req) => String(req.user?.id || req.user?._id || '')
 
 export const programmingLearningController = {
   seed: asyncHandler(async (req, res) => {
@@ -32,12 +32,19 @@ export const programmingLearningController = {
   }),
 
   track: asyncHandler(async (req, res) => {
+    if (!getUserId(req)) return res.status(401).json({ status: 'error', message: 'Authenticated student is required' })
     const result = await programmingLearningService.trackLesson(getUserId(req), req.params.id, req.body)
     res.status(200).json({
       status: 'success',
       data: result,
       message: 'Lesson progress tracked successfully'
     })
+  }),
+
+  videoEvent: asyncHandler(async (req, res) => {
+    if (!getUserId(req)) return res.status(401).json({ status: 'error', message: 'Authenticated student is required' })
+    const result = await programmingLearningService.recordVideoEvent(getUserId(req), req.params.id, req.body)
+    res.status(202).json({ status: 'success', data: result, message: 'Video activity event recorded' })
   }),
 
   dashboard: asyncHandler(async (req, res) => {
@@ -50,7 +57,9 @@ export const programmingLearningController = {
   }),
 
   submitQuiz: asyncHandler(async (req, res) => {
-    const result = await programmingLearningService.submitQuiz(getUserId(req), req.params.id, req.body.answers || [])
+    const result = await programmingLearningService.submitQuiz(
+      getUserId(req), req.params.id, req.body.answers || [], req.body.quizSessionId || null,
+    )
     res.status(200).json({
       status: 'success',
       data: result,

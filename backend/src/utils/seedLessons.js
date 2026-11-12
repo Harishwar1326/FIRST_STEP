@@ -180,58 +180,51 @@ const tasksData = [
 
 export const seedLessons = async () => {
   try {
-    // 1. Clear existing curriculum
-    await Lesson.deleteMany({});
-    await Quiz.deleteMany({});
-    await Task.deleteMany({});
-
-    console.log('Cleared existing lessons, quizzes, and tasks.');
-
-    // 2. Insert Lessons
-    const insertedLessons = await Lesson.insertMany(lessonsData);
-    console.log(`Successfully seeded ${insertedLessons.length} lessons.`);
-
-    // Map title to ObjectId for relations
-    const lessonMap = {};
-    insertedLessons.forEach((l) => {
-      lessonMap[l.title] = l._id;
-    });
-
-    // 3. Insert Quizzes
-    const quizzesToInsert = [];
-    quizzesData.forEach((qData) => {
-      const lessonId = lessonMap[qData.lessonTitle];
-      if (lessonId) {
-        quizzesToInsert.push({
-          lessonId,
-          questions: qData.questions,
-        });
+    // Add missing seed content only. Existing lessons, quizzes, and tasks may
+    // contain administrator edits or student references and must be retained.
+    const lessonMap = new Map();
+    let lessonsCreated = 0;
+    for (const lessonData of lessonsData) {
+      const identity = {
+        class: lessonData.class,
+        subject: lessonData.subject,
+        chapter: lessonData.chapter,
+        title: lessonData.title,
+      };
+      let lesson = await Lesson.findOne(identity);
+      if (!lesson) {
+        lesson = await Lesson.create(lessonData);
+        lessonsCreated += 1;
       }
-    });
-    const seededQuizzes = await Quiz.insertMany(quizzesToInsert);
-    console.log(`Successfully seeded ${seededQuizzes.length} quizzes.`);
+      lessonMap.set(lessonData.title, lesson._id);
+    }
 
-    // 4. Insert Tasks
-    const tasksToInsert = [];
-    tasksData.forEach((tData) => {
-      const lessonId = lessonMap[tData.lessonTitle];
-      if (lessonId) {
-        tasksToInsert.push({
-          lessonId,
-          title: tData.title,
-          description: tData.description,
-          type: tData.type,
-        });
-      }
-    });
-    const seededTasks = await Task.insertMany(tasksToInsert);
-    console.log(`Successfully seeded ${seededTasks.length} tasks.`);
+    let quizzesCreated = 0;
+    for (const quizData of quizzesData) {
+      const lessonId = lessonMap.get(quizData.lessonTitle);
+      if (!lessonId || await Quiz.exists({ lessonId })) continue;
+      await Quiz.create({ lessonId, questions: quizData.questions });
+      quizzesCreated += 1;
+    }
+
+    let tasksCreated = 0;
+    for (const taskData of tasksData) {
+      const lessonId = lessonMap.get(taskData.lessonTitle);
+      if (!lessonId || await Task.exists({ lessonId, title: taskData.title })) continue;
+      await Task.create({
+        lessonId,
+        title: taskData.title,
+        description: taskData.description,
+        type: taskData.type,
+      });
+      tasksCreated += 1;
+    }
 
     return {
       success: true,
-      lessonsCount: insertedLessons.length,
-      quizzesCount: seededQuizzes.length,
-      tasksCount: seededTasks.length,
+      lessonsCreated,
+      quizzesCreated,
+      tasksCreated,
     };
   } catch (error) {
     console.error('Error seeding lessons database:', error);

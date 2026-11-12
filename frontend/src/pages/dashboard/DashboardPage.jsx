@@ -35,14 +35,14 @@ const getErrorMessage = (error) =>
   error?.response?.data?.message || error?.message || 'Unable to load learning progress.'
 
 const StatCard = ({ icon: Icon, label, value, detail }) => (
-  <Card className="p-4">
+  <Card className="student-stat p-4">
     <div className="flex items-start justify-between gap-3">
       <div>
         <p className="text-[10px] font-black uppercase tracking-[0.16em] text-muted">{label}</p>
         <p className="mt-2 font-display text-2xl font-black text-primary">{value}</p>
         {detail ? <p className="mt-1 text-xs font-semibold text-secondary">{detail}</p> : null}
       </div>
-      <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-app bg-elevated text-secondary">
+      <div className="student-stat-icon flex h-10 w-10 items-center justify-center rounded-xl border border-app bg-elevated text-secondary">
         <Icon size={19} strokeWidth={1.5} />
       </div>
     </div>
@@ -51,9 +51,9 @@ const StatCard = ({ icon: Icon, label, value, detail }) => (
 
 const MissionCard = ({ title, category, difficulty, duration, progress, href = '/programming-learning', icon: Icon = Target }) => (
   <Link to={href} className="group block">
-    <Card className="h-full p-5 transition hover:-translate-y-1 hover:border-accent motion-reduce:hover:translate-y-0">
+    <Card className="mission-card h-full p-5 transition hover:-translate-y-1 hover:border-accent motion-reduce:hover:translate-y-0">
       <div className="mb-5 flex items-start justify-between gap-4">
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent text-white">
+        <div className="mission-icon flex h-12 w-12 items-center justify-center rounded-xl bg-accent text-white">
           <Icon size={22} strokeWidth={1.5} />
         </div>
         {difficulty ? <Badge>{difficulty}</Badge> : null}
@@ -148,12 +148,12 @@ const DashboardPage = () => {
     <div className="journey-page">
       <div className="mb-6 grid gap-4 xl:grid-cols-[1fr_420px]">
         <motion.section initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }} className="min-w-0">
-          <Card className="relative overflow-hidden p-6 sm:p-8">
+          <Card className="student-hero relative overflow-hidden p-6 sm:p-8">
             <div className="relative grid gap-8 lg:grid-cols-[1fr_auto] lg:items-center">
               <div className="min-w-0">
                 <Badge tone="accent">Continue Learning</Badge>
                 <h1 className="mt-5 max-w-3xl font-display text-4xl font-black leading-[0.95] tracking-tight text-primary sm:text-5xl xl:text-6xl">
-                  Take the next step with clarity.
+                  Build your <span className="student-hero-accent">next win.</span>
                 </h1>
                 <p className="mt-5 max-w-2xl text-base leading-7 text-secondary">
                   {modeCopy[mode]} FirstStep keeps today focused on progress, weak areas, and the next useful action.
@@ -192,7 +192,7 @@ const DashboardPage = () => {
 
         <motion.aside initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.08 }} className="space-y-4">
           <ModeSwitcher value={mode} onChange={setMode} />
-          <Card className="p-5">
+          <Card className="student-spark p-5">
             <div className="flex items-start gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-success text-black">
                 <Flame size={20} strokeWidth={1.5} />

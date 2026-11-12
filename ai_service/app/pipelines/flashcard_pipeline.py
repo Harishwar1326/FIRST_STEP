@@ -8,9 +8,13 @@ logger = logging.getLogger("ai_service")
 
 class FlashcardPipeline:
     def __init__(self):
-        self.nlp = spacy.load("en_core_web_sm")
-        self.sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
-        self.keybert = KeyBERT(model=self.sentence_model)
+        try:
+            self.nlp = spacy.load("en_core_web_sm")
+        except Exception as exc:
+            logger.warning("spaCy model unavailable for flashcards; using blank English tokenizer: %s", exc)
+            self.nlp = spacy.blank("en")
+        self.sentence_model = None
+        self.keybert = None
     
     async def generate(self, note_id: str, content: str, concepts: List[str]) -> List[Dict]:
         """
@@ -57,7 +61,11 @@ class FlashcardPipeline:
     def _generate_definition_flashcards(self, content: str) -> List[Dict]:
         """Generate definition flashcards from keywords"""
         cards = []
-        keywords = self.keybert.extract_keywords(content, keyphrase_ngram_range=(1, 2), top_k=5)
+        if self.keybert is not None:
+            keywords = self.keybert.extract_keywords(content, keyphrase_ngram_range=(1, 2), top_k=5)
+        else:
+            words = [word for word in content.split() if len(word) > 4]
+            keywords = [(word.strip(".,!?;:()[]{}\"'").title(), 0.0) for word in list(dict.fromkeys(words))[:5]]
         
         for keyword, score in keywords:
             definition = self._find_definition(keyword, content)

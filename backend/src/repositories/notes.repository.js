@@ -1,6 +1,9 @@
 import mongoose from 'mongoose'
 import { Note } from '../models/note.model.js'
 
+export const escapeNoteSearch = (value = '') =>
+  String(value).slice(0, 200).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
 export const notesRepository = {
   async create(noteData) {
     const note = new Note(noteData)
@@ -25,14 +28,15 @@ export const notesRepository = {
     if (filters.status) query.status = filters.status
     if (filters.tag) query.tags = filters.tag
     if (filters.search) {
+      const safeSearch = escapeNoteSearch(filters.search)
       query.$or = [
-        { title: { $regex: filters.search, $options: 'i' } },
-        { subject: { $regex: filters.search, $options: 'i' } },
-        { folder: { $regex: filters.search, $options: 'i' } },
-        { tags: { $regex: filters.search, $options: 'i' } },
-        { summary: { $regex: filters.search, $options: 'i' } },
-        { keywords: { $regex: filters.search, $options: 'i' } },
-        { concepts: { $regex: filters.search, $options: 'i' } },
+        { title: { $regex: safeSearch, $options: 'i' } },
+        { subject: { $regex: safeSearch, $options: 'i' } },
+        { folder: { $regex: safeSearch, $options: 'i' } },
+        { tags: { $regex: safeSearch, $options: 'i' } },
+        { summary: { $regex: safeSearch, $options: 'i' } },
+        { keywords: { $regex: safeSearch, $options: 'i' } },
+        { concepts: { $regex: safeSearch, $options: 'i' } },
       ]
     }
 
@@ -65,7 +69,22 @@ export const notesRepository = {
     )
   },
 
+  async markProcessingFailed(noteId, message) {
+    return Note.findByIdAndUpdate(noteId, {
+      status: 'failed',
+      processingWarning: String(message || 'Document processing failed.').slice(0, 500),
+      $push: { activity: { type: 'failed', label: 'Document processing failed' } },
+    }, { new: true })
+  },
+
   async updateWithAIResults(noteId, aiResults) {
+    const relationships = Array.isArray(aiResults.relationships)
+      ? aiResults.relationships.filter((item) => item && typeof item === 'object').map((item) => ({
+          source: String(item.source || item.from || ''),
+          target: String(item.target || item.to || ''),
+          type: String(item.type || 'related'),
+        })).filter((item) => item.source && item.target)
+      : []
     return Note.findByIdAndUpdate(
       noteId,
       {
@@ -73,9 +92,12 @@ export const notesRepository = {
         summary: aiResults.summary,
         keywords: aiResults.keywords,
         concepts: aiResults.concepts,
-        relationships: aiResults.relationships,
+        relationships,
         difficulty: aiResults.difficulty,
         estimatedStudyTime: aiResults.estimatedStudyTime,
+        aiProvider: aiResults.aiProvider || 'local-nlp',
+        processingWarning: aiResults.processingWarning || '',
+        processingChunks: aiResults.learningPack?.chunksProcessed || 0,
         aiResults: {
           revisionNotes: aiResults.revisionNotes,
           chapterNotes: aiResults.chapterNotes,
@@ -87,6 +109,10 @@ export const notesRepository = {
           flashcards: aiResults.flashcards || [],
           mindMap: aiResults.mindMap,
           questions: aiResults.questions || [],
+          learningQuiz: aiResults.learningQuiz || [],
+          gapFill: aiResults.gapFill || [],
+          gaps: aiResults.gaps || [],
+          learningPack: aiResults.learningPack || null,
         },
       },
       { new: true }
@@ -172,6 +198,37 @@ export const notesRepository = {
       noteId,
       { 'aiResults.flashcards': flashcards },
       { new: true }
+    )
+  },
+
+  async updateLearningResults(noteId, learning = {}) {
+    const $set = {}
+    if (Array.isArray(learning.flashcards)) {
+      $set['aiResults.flashcards'] = learning.flashcards
+    }
+    if (Array.isArray(learning.quiz)) {
+      $set['aiResults.learningQuiz'] = learning.quiz
+    }
+    if (learning.revisionSummary) {
+      $set['aiResults.revisionNotes'] = learning.revisionSummary
+    }
+    if (learning && Object.keys(learning).length) {
+      $set['aiResults.learningPack'] = learning
+    }
+    if (!Object.keys($set).length) return null
+
+    return Note.findByIdAndUpdate(
+      noteId,
+      {
+        $set,
+        $push: {
+          activity: {
+            type: 'processed',
+            label: 'AI learning set saved (flashcards & quiz)',
+          },
+        },
+      },
+      { new: true },
     )
   },
 

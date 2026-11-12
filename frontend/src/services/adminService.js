@@ -1,8 +1,14 @@
 import { api } from './api'
+import { unwrapApiResponse } from '../utils/unwrapApiResponse'
 
 export const adminService = {
   getSummary: async () => {
     const response = await api.get('/admin/summary')
+    return unwrapApiResponse(response.data)
+  },
+
+  getVideoAnalytics: async (params = {}) => {
+    const response = await api.get('/admin/video-analytics', { params })
     return response.data
   },
 

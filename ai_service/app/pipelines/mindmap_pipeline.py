@@ -8,7 +8,11 @@ logger = logging.getLogger("ai_service")
 
 class MindMapPipeline:
     def __init__(self):
-        self.nlp = spacy.load("en_core_web_sm")
+        try:
+            self.nlp = spacy.load("en_core_web_sm")
+        except Exception as exc:
+            logger.warning("spaCy model unavailable for mind maps; using blank English tokenizer: %s", exc)
+            self.nlp = spacy.blank("en")
     
     async def generate(self, note_id: str, concepts: List[str], relationships: List[Dict]) -> Dict:
         """

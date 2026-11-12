@@ -104,6 +104,9 @@ const noteSchema = new mongoose.Schema(
     estimatedStudyTime: {
       type: Number, // in minutes
     },
+    aiProvider: { type: String, default: 'pending' },
+    processingWarning: { type: String, default: '' },
+    processingChunks: { type: Number, default: 0 },
     aiResults: {
       revisionNotes: String,
       chapterNotes: String,
@@ -130,6 +133,30 @@ const noteSchema = new mongoose.Schema(
         bloomLevel: String,
         difficulty: String,
       }],
+      learningQuiz: [{
+        question: String,
+        options: [String],
+        correctIndex: Number,
+        explanation: String,
+        concept: String,
+      }],
+      gapFill: [{
+        prompt: String,
+        answer: String,
+        explanation: String,
+        concept: String,
+      }],
+      gaps: [{
+        concept: String,
+        reason: String,
+        evidence: String,
+        severity: String,
+        recommendedAction: String,
+      }],
+      learningPack: {
+        type: mongoose.Schema.Types.Mixed,
+        default: null,
+      },
     },
   },
   {

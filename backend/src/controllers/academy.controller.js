@@ -10,6 +10,15 @@ const pickGuestUserId = (req) => {
   return DEFAULT_GUEST_ID_PREFIX + Math.random().toString(36).slice(2, 10);
 };
 
+const resolveOwnedStudentId = (req) => {
+  const requestedId = String(req.params.studentId || '').trim();
+  const userId = req.user?.id ? String(req.user.id) : '';
+  if (requestedId && requestedId !== userId) {
+    throw new AppError('You can only access your own learning data.', 403);
+  }
+  return userId || pickGuestUserId(req);
+};
+
 const EMPTY_PROGRESS_FALLBACK = {
   totalSessions: 0,
   totalMinutes: 0,
@@ -86,7 +95,7 @@ export const academyController = {
   }),
 
   getTechniqueRecommendation: asyncHandler(async (req, res) => {
-    const userId = req.params.studentId || pickGuestUserId(req);
+    const userId = resolveOwnedStudentId(req);
     const subject = req.query.subject || req.body?.subject;
     try {
       const result = await academyService.getTechniqueRecommendation(
@@ -117,8 +126,24 @@ export const academyController = {
     }
   }),
 
+  recommendTechnique: asyncHandler(async (req, res) => {
+    const userId = req.user?.id || pickGuestUserId(req);
+    const subject = req.body?.subject;
+    try {
+      const result = await academyService.getTechniqueRecommendation(userId, subject);
+      res.status(200).json({ status: 'success', data: result, message: 'Technique recommendation retrieved' });
+    } catch (error) {
+      console.warn('[academy.controller] recommendTechnique fallback:', error.message);
+      res.status(200).json({
+        status: 'success',
+        data: { recommendedTechnique: { id: 'active-recall', name: 'Active Recall', score: 85, tagline: 'Test yourself to lock concepts into memory', category: 'Retrieval & Memory' }, fallback: true },
+        message: 'Retrieved fallback technique recommendation',
+      });
+    }
+  }),
+
   getStudentProfile: asyncHandler(async (req, res) => {
-    const userId = req.params.studentId || pickGuestUserId(req);
+    const userId = resolveOwnedStudentId(req);
     try {
       const result = await academyService.getStudentProfile(userId);
       res.status(200).json({
@@ -198,7 +223,7 @@ export const academyController = {
   }),
 
   getProgress: asyncHandler(async (req, res) => {
-    const userId = req.params.studentId || pickGuestUserId(req);
+    const userId = resolveOwnedStudentId(req);
     try {
       const result = await academyService.getStudentTechniqueProgress(userId);
       res.status(200).json({

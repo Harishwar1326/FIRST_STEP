@@ -2,21 +2,19 @@ import { motion } from 'framer-motion'
 import { useTheme } from '../../context/ThemeContext'
 
 const LearningStyleChart = ({ learningStyle, scores }) => {
-  const { theme } = useTheme
+  const { theme } = useTheme()
 
-  const styles = [
-    { name: 'Visual', score: scores?.visual || 75, color: 'from-purple-500 to-indigo-500' },
-    { name: 'Auditory', score: scores?.auditory || 60, color: 'from-cyan-500 to-emerald-500' },
-    { name: 'Kinesthetic', score: scores?.kinesthetic || 45, color: 'from-amber-500 to-orange-500' },
-    { name: 'Reading', score: scores?.reading || 70, color: 'from-pink-500 to-rose-500' },
-  ]
+  const colors = ['from-purple-500 to-indigo-500', 'from-cyan-500 to-emerald-500', 'from-amber-500 to-orange-500', 'from-pink-500 to-rose-500']
+  const styles = Object.entries(scores || {})
+    .filter(([, score]) => Number.isFinite(Number(score)))
+    .map(([name, score], index) => ({ name, score: Number(score), color: colors[index % colors.length] }))
 
   return (
     <div className={`p-6 rounded-2xl ${theme === 'dark' ? 'bg-[#0f131a] border border-gray-800' : 'bg-white border border-gray-200'}`}>
       <h3 className={`text-lg font-semibold mb-6 ${theme === 'dark' ? 'text-gray-100' : 'text-gray-900'}`}>
         Learning Style Analysis
       </h3>
-      <div className="space-y-4">
+      {styles.length ? <div className="space-y-4">
         {styles.map((style, index) => (
           <motion.div
             key={style.name}
@@ -42,13 +40,13 @@ const LearningStyleChart = ({ learningStyle, scores }) => {
             </div>
           </motion.div>
         ))}
-      </div>
+      </div> : <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>There is not enough validated preference data to compare learning formats yet.</p>}
       <div className={`mt-6 p-4 rounded-xl ${theme === 'dark' ? 'bg-purple-500/10 border border-purple-500/20' : 'bg-purple-50 border border-purple-200'}`}>
         <p className={`text-sm font-medium ${theme === 'dark' ? 'text-purple-300' : 'text-purple-700'}`}>
-          Dominant Style: {learningStyle || 'Visual'}
+          Student preference: {learningStyle || 'Not recorded'}
         </p>
         <p className={`text-xs mt-1 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-          Based on your interaction patterns and quiz performance
+          Based on an explicit student preference, when provided
         </p>
       </div>
     </div>

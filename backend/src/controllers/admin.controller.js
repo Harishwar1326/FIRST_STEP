@@ -12,6 +12,11 @@ export const adminController = {
     })
   }),
 
+  videoAnalytics: asyncHandler(async (req, res) => {
+    const analytics = await adminService.getVideoAnalytics(req.query)
+    res.status(200).json({ status: 'success', data: analytics, message: 'Video analytics retrieved successfully' })
+  }),
+
   students: asyncHandler(async (req, res) => {
     const students = await adminService.listStudents(req.query)
     res.status(200).json({

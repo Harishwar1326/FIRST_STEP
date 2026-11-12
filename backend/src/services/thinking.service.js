@@ -1,12 +1,15 @@
 import axios from 'axios'
 import { thinkingRepository } from '../repositories/thinking.repository.js'
 import { aiServiceClient } from '../utils/aiServiceClient.js'
+import { callGroqJson } from '../utils/groqClient.js'
 
 const now = () => new Date()
+const boundedLimit = (value, fallback, maximum) => {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) ? Math.min(maximum, Math.max(1, parsed)) : fallback
+}
 const GEOAPIFY_PLACES_URL = process.env.GEOAPIFY_PLACES_URL || 'https://api.geoapify.com/v2/places'
 const NEARBY_RADIUS_METERS = Number(process.env.THINKING_LAB_NEARBY_RADIUS_METERS) || 10000
-const GROQ_API_URL = process.env.GROQ_API_URL || 'https://api.groq.com/openai/v1/chat/completions'
-const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.1-8b-instant'
 
 const sourceCatalog = {
   telanganaEnergy: {
@@ -28,7 +31,7 @@ const sourceCatalog = {
     reliability: 'high',
   },
   osm: {
-    name: 'OpenStreetMap / Open local directory placeholder',
+    name: 'OpenStreetMap community map data',
     sourceUrl: 'https://www.openstreetmap.org/',
     sourceType: 'open-data',
     reliability: 'medium',
@@ -489,24 +492,6 @@ const evaluateIndiaAnswerLocally = (answer) => {
   }
 }
 
-const parseJsonObject = (value) => {
-  if (!value) return null
-  if (typeof value === 'object') return value
-
-  const trimmed = String(value).trim()
-  try {
-    return JSON.parse(trimmed)
-  } catch (error) {
-    const match = trimmed.match(/\{[\s\S]*\}/)
-    if (!match) return null
-    try {
-      return JSON.parse(match[0])
-    } catch (innerError) {
-      return null
-    }
-  }
-}
-
 const clampScore = (value, fallback) => Math.max(0, Math.min(100, Math.round(Number(value) || fallback)))
 
 const normalizeIndiaEvaluation = (evaluation, fallback) => {
@@ -533,50 +518,23 @@ const normalizeIndiaEvaluation = (evaluation, fallback) => {
   return normalized
 }
 
-const evaluateWithGroq = async ({ challenge, answer }) => {
-  if (!process.env.GROQ_API_KEY) return null
-
-  try {
-    const response = await axios.post(
-      GROQ_API_URL,
-      {
-        model: GROQ_MODEL,
-        temperature: 0.2,
-        max_tokens: 450,
-        messages: [
-          {
-            role: 'system',
-            content: [
-              'You evaluate student thinking for open-ended social problem scenarios.',
-              'Do not mark answers simply correct or wrong.',
-              'Return only valid JSON with keys: score, criticalThinking, reasoning, creativity, socialAwareness, problemSolving, feedback.',
-              'All scores must be integers from 0 to 100. Feedback must be short, constructive, and student-friendly.',
-            ].join(' '),
-          },
-          {
-            role: 'user',
-            content: JSON.stringify({
-              scenario: challenge.scenario,
-              question: challenge.question,
-              studentAnswer: answer,
-              rubric: ['critical thinking', 'reasoning', 'creativity', 'social awareness', 'problem solving'],
-            }),
-          },
-        ],
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        timeout: 30000,
-      }
-    )
-
-    return parseJsonObject(response.data?.choices?.[0]?.message?.content)
-  } catch (error) {
-    return null
-  }
+const evaluateWithAIProvider = async ({ challenge, answer }) => {
+  return callGroqJson({
+    systemPrompt: [
+      'You evaluate student thinking for open-ended social problem scenarios.',
+      'Do not mark answers simply correct or wrong.',
+      'Return only valid JSON with keys: score, criticalThinking, reasoning, creativity, socialAwareness, problemSolving, feedback.',
+      'All scores must be integers from 0 to 100. Feedback must be short, constructive, and student-friendly.',
+    ].join(' '),
+    userPayload: {
+      scenario: challenge.scenario,
+      question: challenge.question,
+      studentAnswer: answer,
+      rubric: ['critical thinking', 'reasoning', 'creativity', 'social awareness', 'problem solving'],
+    },
+    maxTokens: 450,
+    temperature: 0.2,
+  })
 }
 
 const tryAi = async (path, payload) => {
@@ -846,8 +804,8 @@ export const thinkingService = {
     }
 
     const fallback = evaluateIndiaAnswerLocally(answer)
-    const groqEvaluation = await evaluateWithGroq({ challenge, answer })
-    const evaluation = normalizeIndiaEvaluation(groqEvaluation, fallback)
+    const aiEvaluation = await evaluateWithAIProvider({ challenge, answer })
+    const evaluation = normalizeIndiaEvaluation(aiEvaluation, fallback)
 
     try {
       await this.updateThinkingProfile(user.id, {
@@ -917,7 +875,7 @@ export const thinkingService = {
       const dbItems = await thinkingRepository.findKnowledgeItems({
         category: filters.category,
         awarenessLevel: filters.awarenessLevel,
-        limit: Number(filters.limit) || 12,
+        limit: boundedLimit(filters.limit, 12, 50),
       })
 
       if (dbItems.length) {
@@ -947,7 +905,7 @@ export const thinkingService = {
       const nearby = await thinkingRepository.findLocationItems({
         district: profile.district,
         state: profile.state,
-        limit: Number(filters.limit) || 8,
+        limit: boundedLimit(filters.limit, 8, 30),
       })
 
       if (nearby.length) {
@@ -1097,40 +1055,27 @@ export const thinkingService = {
   },
 
   async getProgress(user) {
-    try {
-      const profile = await thinkingRepository.findStudentThinkingProfile(user.id)
-      const attempts = await thinkingRepository.findChallengeAttemptsByStudent(user.id, 10)
-      if (profile) {
-        return {
-          skillAverages: profile.skillAverages,
-          weakReasoningAreas: profile.weakReasoningAreas || [],
-          topicsExplored: profile.topicsExplored || [],
-          questionsAttempted: profile.questionsAttempted || 0,
-          recentAttempts: attempts.map((attempt) => ({
-            id: String(attempt._id),
-            createdAt: attempt.createdAt,
-            challengeType: attempt.challengeType,
-            overall: attempt.scores?.overall || 0,
-          })),
-        }
-      }
-    } catch (error) {
-      // Use the default profile below.
-    }
+    const profile = await thinkingRepository.findStudentThinkingProfile(user.id)
+    const attempts = await thinkingRepository.findChallengeAttemptsByStudent(user.id, 10)
 
     return {
-      skillAverages: {
-        criticalThinking: 45,
-        problemSolving: 48,
-        creativity: 52,
-        evidenceReasoning: 38,
-        decisionMaking: 44,
-        curiosity: 58,
+      skillAverages: profile?.skillAverages || {
+        criticalThinking: 0,
+        problemSolving: 0,
+        creativity: 0,
+        evidenceReasoning: 0,
+        decisionMaking: 0,
+        curiosity: 0,
       },
-      weakReasoningAreas: ['evidence-based reasoning'],
-      topicsExplored: [],
-      questionsAttempted: 0,
-      recentAttempts: [],
+      weakReasoningAreas: profile?.weakReasoningAreas || [],
+      topicsExplored: profile?.topicsExplored || [],
+      questionsAttempted: profile?.questionsAttempted || 0,
+      recentAttempts: attempts.map((attempt) => ({
+        id: String(attempt._id),
+        createdAt: attempt.createdAt,
+        challengeType: attempt.challengeType,
+        overall: attempt.scores?.overall || 0,
+      })),
     }
   },
 

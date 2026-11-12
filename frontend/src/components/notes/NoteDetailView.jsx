@@ -5,7 +5,6 @@ import {
   Brain,
   Clock,
   FileText,
-  Layers3,
   Share2,
   Sparkles,
   Target,
@@ -31,7 +30,25 @@ const emptyText = {
 const NoteDetailView = ({ note, onClose }) => {
   const { theme } = useTheme()
   const [activeTab, setActiveTab] = useState('summary')
+  const [shareMessage, setShareMessage] = useState('')
   const ai = note.aiResults || {}
+
+  const shareNote = async () => {
+    const text = [note.title, note.summary].filter(Boolean).join('\n\n')
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: note.title || 'Study note', text })
+        setShareMessage('Note shared')
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text)
+        setShareMessage('Note summary copied')
+      } else {
+        setShareMessage('Sharing is unavailable in this browser')
+      }
+    } catch (error) {
+      if (error?.name !== 'AbortError') setShareMessage('Could not share this note')
+    }
+  }
 
   return (
     <motion.div
@@ -44,11 +61,11 @@ const NoteDetailView = ({ note, onClose }) => {
         initial={{ scale: 0.96, opacity: 0, y: 12 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.96, opacity: 0, y: 12 }}
-        className={`flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-[1.75rem] border shadow-[0_30px_90px_rgba(20,17,12,0.26)] ${
+        className={`flex max-h-[92dvh] w-full max-w-6xl flex-col overflow-hidden rounded-[1.75rem] border shadow-[0_30px_90px_rgba(20,17,12,0.26)] ${
           theme === 'dark' ? 'border-stone-800 bg-stone-950 text-stone-100' : 'border-white bg-white text-stone-950'
         }`}
       >
-        <header className="flex flex-col gap-4 border-b border-stone-200/70 p-5 sm:flex-row sm:items-start sm:justify-between">
+        <header className="flex shrink-0 flex-col gap-3 border-b border-stone-200/70 p-4 sm:gap-4 sm:p-5 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="mb-2 flex flex-wrap gap-2">
               <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-amber-800">
@@ -59,12 +76,19 @@ const NoteDetailView = ({ note, onClose }) => {
               </span>
             </div>
             <h2 className="truncate text-2xl font-black">{note.title}</h2>
-            <p className={`mt-2 max-w-3xl text-sm font-semibold leading-6 ${theme === 'dark' ? 'text-stone-400' : 'text-stone-600'}`}>
+            <p className={`mt-2 line-clamp-2 max-w-3xl text-sm font-semibold leading-5 sm:leading-6 ${theme === 'dark' ? 'text-stone-400' : 'text-stone-600'}`}>
               {note.summary || 'This document is waiting for AI processing to complete.'}
             </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-bold">
+              <span className="rounded-full bg-sky-100 px-2.5 py-1 text-sky-800">
+                {note.aiProvider === 'gemini' ? 'Gemini study pack' : note.aiProvider === 'local-nlp' ? 'Local processing' : 'AI processing'}
+              </span>
+              {note.processingChunks > 0 && <span className="text-stone-500">{note.processingChunks} source chunks analyzed</span>}
+            </div>
+            {note.processingWarning && <p role="status" className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">{note.processingWarning}</p>}
           </div>
           <div className="flex shrink-0 gap-2">
-            <button className="rounded-full p-2 text-stone-500 transition hover:bg-stone-100 hover:text-stone-900" title="Share note" aria-label="Share note">
+            <button onClick={shareNote} className="rounded-full p-2 text-stone-500 transition hover:bg-stone-100 hover:text-stone-900" title="Share note summary" aria-label="Share note summary">
               <Share2 size={20} />
             </button>
             <button onClick={onClose} className="rounded-full p-2 text-stone-500 transition hover:bg-stone-100 hover:text-stone-900" title="Close" aria-label="Close">
@@ -72,8 +96,9 @@ const NoteDetailView = ({ note, onClose }) => {
             </button>
           </div>
         </header>
+        {shareMessage && <p role="status" className="px-5 pt-2 text-sm font-semibold text-emerald-700">{shareMessage}</p>}
 
-        <nav className="flex gap-1 overflow-x-auto border-b border-stone-200/70 px-4">
+        <nav className="flex shrink-0 gap-1 overflow-x-auto border-b border-stone-200/70 px-4">
           {tabs.map((tab) => {
             const Icon = tab.icon
             return (
@@ -93,7 +118,7 @@ const NoteDetailView = ({ note, onClose }) => {
           })}
         </nav>
 
-        <main className="overflow-y-auto p-5">
+        <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-5">
           {activeTab === 'summary' && (
             <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
               <section className="rounded-[1.3rem] bg-stone-50 p-5">
@@ -103,12 +128,10 @@ const NoteDetailView = ({ note, onClose }) => {
                 </p>
               </section>
               <aside className="space-y-4">
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <Metric icon={Clock} label="Study" value={`${note.estimatedStudyTime || 0}m`} />
                   <Metric icon={TrendingUp} label="Level" value={`${note.difficulty || '-'} / 10`} />
-                  <Metric icon={Layers3} label="Concepts" value={note.concepts?.length || 0} />
                 </div>
-                <ChipPanel title="Key Concepts" items={note.concepts || ai.keyConcepts || []} tone="amber" />
                 <ChipPanel title="Keywords" items={note.keywords || []} tone="emerald" />
               </aside>
             </div>
@@ -119,6 +142,8 @@ const NoteDetailView = ({ note, onClose }) => {
               <TextPanel title="Revision Notes" value={ai.revisionNotes} />
               <TextPanel title="Chapter Notes" value={ai.chapterNotes} />
               <TextPanel title="Quick Revision Sheet" value={ai.quickRevisionSheet} />
+              <TextPanel title="Definitions" value={(ai.definitions || []).join('\n\n')} />
+              <TextPanel title="Formula Sheet" value={(ai.formulaSheet || []).join('\n\n')} />
               <section className="rounded-[1.3rem] bg-stone-50 p-5">
                 <h3 className="text-lg font-black">Glossary</h3>
                 <div className="mt-4 space-y-3">
@@ -129,6 +154,18 @@ const NoteDetailView = ({ note, onClose }) => {
                     </div>
                   )) : <EmptyState text="Glossary terms will appear after processing." />}
                 </div>
+              </section>
+              <section className="rounded-[1.3rem] border border-amber-200 bg-amber-50/70 p-5 lg:col-span-2">
+                <h3 className="text-lg font-black text-amber-950">Potential gaps in these notes</h3>
+                <p className="mt-1 text-xs font-semibold text-amber-900">These describe areas the source material may not explain fully; they are not a diagnosis of your understanding.</p>
+                {ai.gaps?.length ? <div className="mt-3 grid gap-3 md:grid-cols-2">{ai.gaps.map((gap, index) => (
+                  <article key={`${gap.concept}-${index}`} className="rounded-xl bg-white/80 p-3">
+                    <div className="flex items-center justify-between gap-2"><p className="font-black text-stone-900">{gap.concept}</p><span className="text-[10px] font-black uppercase text-amber-800">{gap.severity || 'review'}</span></div>
+                    <p className="mt-1 text-sm font-semibold text-stone-700">{gap.reason}</p>
+                    {gap.evidence && <p className="mt-1 text-xs text-stone-500">Source: {gap.evidence}</p>}
+                    {gap.recommendedAction && <p className="mt-2 text-xs font-bold text-amber-900">Next: {gap.recommendedAction}</p>}
+                  </article>
+                ))}</div> : <EmptyState text="No source-material gaps were identified." />}
               </section>
             </div>
           )}
@@ -164,9 +201,9 @@ const NoteDetailView = ({ note, onClose }) => {
           )}
 
           {activeTab === 'questions' && (
-            ai.questions?.length ? (
+            (ai.questions?.length || ai.learningQuiz?.length || ai.gapFill?.length) ? (
               <div className="space-y-4">
-                {ai.questions.map((question, index) => (
+                {(ai.questions || []).map((question, index) => (
                   <div key={`${question.question}-${index}`} className="rounded-[1.3rem] bg-stone-50 p-5">
                     <div className="mb-3 flex flex-wrap gap-2">
                       <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-black uppercase text-sky-700">{question.bloomLevel || 'practice'}</span>
@@ -175,6 +212,21 @@ const NoteDetailView = ({ note, onClose }) => {
                     <p className="font-black text-stone-950">{question.question}</p>
                     <p className="mt-3 text-sm font-semibold leading-6 text-stone-700">Answer: {question.answer}</p>
                   </div>
+                ))}
+                {(ai.learningQuiz || []).map((question, index) => (
+                  <div key={`quiz-${index}`} className="rounded-[1.3rem] border border-sky-100 bg-sky-50/70 p-5">
+                    <span className="rounded-full bg-white px-3 py-1 text-xs font-black uppercase text-sky-800">Multiple choice · {question.concept || 'Review'}</span>
+                    <p className="mt-3 font-black text-stone-950">{question.question}</p>
+                    <ol className="mt-2 list-inside list-[upper-alpha] space-y-1 text-sm font-semibold text-stone-700">{(question.options || []).map((option, optionIndex) => <li key={optionIndex} className={optionIndex === question.correctIndex ? 'font-black text-emerald-800' : ''}>{option}{optionIndex === question.correctIndex ? ' · Answer' : ''}</li>)}</ol>
+                    {question.explanation && <p className="mt-2 text-sm font-semibold text-stone-600">{question.explanation}</p>}
+                  </div>
+                ))}
+                {(ai.gapFill || []).map((item, index) => (
+                  <details key={`gap-fill-${index}`} className="rounded-[1.3rem] border border-violet-100 bg-violet-50/70 p-5">
+                    <summary className="cursor-pointer font-black text-stone-950">Fill in the blank · {item.concept || `Practice ${index + 1}`}: {item.prompt}</summary>
+                    <p className="mt-3 text-sm font-bold text-violet-900">Answer: {item.answer}</p>
+                    {item.explanation && <p className="mt-1 text-sm font-semibold text-stone-600">{item.explanation}</p>}
+                  </details>
                 ))}
               </div>
             ) : <EmptyState text={emptyText.questions} />

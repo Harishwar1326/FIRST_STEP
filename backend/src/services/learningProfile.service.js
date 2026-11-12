@@ -7,11 +7,32 @@ import { LearningAcademyActivity } from '../models/learningAcademyActivity.model
 import { Revision } from '../models/revision.model.js';
 import { Analytics } from '../models/analytics.model.js';
 import { Note } from '../models/note.model.js';
-import { predictLearningProfile } from '../utils/mlLearningEngine.js';
+import { AppError } from '../utils/errorHandler.js';
 
 const isDbReady = () => mongoose.connection.readyState === 1;
 
+export const buildEmptyLearningProfile = () => ({
+  hasProfileData: false,
+  hasAssessment: false,
+  isDeveloping: true,
+  statusMessage: 'Complete the Learning DNA assessment to create your profile.',
+});
+
 const clamp = (val, min = 0, max = 100) => Math.max(min, Math.min(max, Math.round(Number(val) || 0)));
+
+const averageObserved = (rows, field) => {
+  const values = rows
+    .filter((row) => row?.[field] !== null && row?.[field] !== undefined && row?.[field] !== '')
+    .map((row) => Number(row?.[field]))
+    .filter((value) => Number.isFinite(value));
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+};
+
+const blendObserved = (baseline, observed, observedWeight) => {
+  if (baseline === null || baseline === undefined) return observed;
+  if (observed === null || observed === undefined) return baseline;
+  return Math.round(baseline * (1 - observedWeight) + observed * observedWeight);
+};
 
 const calculateDayKey = (dateVal) => {
   if (!dateVal) return null;
@@ -21,53 +42,24 @@ const calculateDayKey = (dateVal) => {
   return d.getTime();
 };
 
-const getCapabilityLabel = (mastery) => {
-  const m = Number(mastery) || 0;
-  if (m >= 86) return 'Highly Advanced';
-  if (m >= 71) return 'Advanced';
-  if (m >= 41) return 'Intermediate';
-  return 'Beginner';
-};
-
-const buildStrengths = (skills, retentionProbability, overallScore) => {
+const buildStrengths = ({ overallScore, objectiveQuestionCount, thinkingSubmissionsCount, avgThinkingScore }) => {
   const strengths = [];
 
-  if (skills.programming >= 75) strengths.push('Strong programming foundation');
-  if (skills.problemSolving >= 75) strengths.push('Good problem-solving ability');
-  if (skills.consistency >= 75) strengths.push('Consistent learning habit');
-  if (skills.confidence >= 75) strengths.push('High learning confidence');
-  if (skills.academicPerformance >= 75) strengths.push('Good academic performance');
-  if (retentionProbability >= 0.70) strengths.push('Strong concept retention');
-  if (overallScore >= 80) strengths.push('High overall subject mastery');
-
-  // If none meet >= 75, highlight top scoring domains (>= 60)
-  if (!strengths.length) {
-    const candidates = [
-      { name: 'Active programming practice', score: skills.programming },
-      { name: 'Emerging problem-solving agility', score: skills.problemSolving },
-      { name: 'Regular study rhythm', score: skills.consistency },
-      { name: 'Receptive learning mindset', score: skills.confidence },
-      { name: 'Solid academic foundation', score: skills.academicPerformance },
-    ]
-      .filter((c) => c.score >= 55)
-      .sort((a, b) => b.score - a.score);
-
-    if (candidates.length) {
-      candidates.slice(0, 2).forEach((c) => strengths.push(c.name));
-    } else {
-      strengths.push('Active learner building foundational capabilities');
-    }
+  if (thinkingSubmissionsCount >= 3 && avgThinkingScore !== null && avgThinkingScore >= 75) {
+    strengths.push('Strong average score across Thinking Lab submissions');
+  }
+  if (objectiveQuestionCount >= 10 && overallScore !== null && overallScore >= 80) {
+    strengths.push('Strong results across at least 10 scored questions');
   }
 
   return strengths;
 };
 
-const buildAreasToImprove = (skills, retentionScore) => {
+const buildAreasToImprove = (skills) => {
   const areas = [];
 
   const candidates = [
     { text: 'Improve study consistency', score: skills.consistency, threshold: 70 },
-    { text: 'Improve revision and retention', score: retentionScore, threshold: 65 },
     { text: 'Practice more problem-solving activities', score: skills.problemSolving, threshold: 70 },
     { text: 'Strengthen programming fundamentals', score: skills.programming, threshold: 70 },
     { text: 'Build confidence with complex tasks', score: skills.confidence, threshold: 65 },
@@ -76,14 +68,11 @@ const buildAreasToImprove = (skills, retentionScore) => {
 
   // Sort ascending: weakest areas first
   const weakList = candidates
-    .filter((c) => c.score < c.threshold)
+    .filter((c) => c.score !== null && c.score !== undefined && c.score < c.threshold)
     .sort((a, b) => a.score - b.score);
 
   if (weakList.length) {
     weakList.slice(0, 3).forEach((item) => areas.push(item.text));
-  } else {
-    areas.push('Tackle advanced real-world project challenges');
-    areas.push('Prepare for competitive benchmarks and timed assessments');
   }
 
   return areas;
@@ -99,7 +88,7 @@ export const learningProfileService = {
     const userObjectId = mongoose.Types.ObjectId.isValid(userId) ? new mongoose.Types.ObjectId(userId) : null;
 
     if (!isDbReady()) {
-      return this._getFallbackProfile();
+      throw new AppError('Learning profile data is temporarily unavailable because the database is disconnected.', 503);
     }
 
     // 1. Fetch Assessment Data
@@ -107,12 +96,12 @@ export const learningProfileService = {
     const hasAssessment = Boolean(assessment && assessment.completedAt);
     const baseProfile = assessment?.capabilityProfile || {};
 
-    const baseProgramming = baseProfile.programming ?? 50;
-    const baseProblemSolving = baseProfile.problemSolving ?? 50;
-    const baseConsistency = baseProfile.consistency ?? 50;
-    const baseConfidence = baseProfile.confidence ?? 50;
-    const baseAcademic = baseProfile.academicPerformance ?? 50;
-    const assessmentKnowledgeScore = assessment?.assessmentScore ?? 0;
+    const baseProgramming = hasAssessment ? (baseProfile.programming ?? null) : null;
+    const baseProblemSolving = hasAssessment ? (baseProfile.problemSolving ?? null) : null;
+    const baseConsistency = hasAssessment ? (baseProfile.consistency ?? null) : null;
+    const baseConfidence = hasAssessment ? (baseProfile.confidence ?? null) : null;
+    const baseAcademic = hasAssessment ? (baseProfile.academicPerformance ?? null) : null;
+    const assessmentKnowledgeScore = hasAssessment ? (assessment.assessmentScore ?? null) : null;
 
     // 2. Fetch All Activity Records in Parallel
     const [
@@ -159,7 +148,7 @@ export const learningProfileService = {
       if (k) activeDayKeys.add(k);
     });
     revisions.forEach((r) => {
-      const k = calculateDayKey(r.lastReviewed || r.updatedAt);
+      const k = calculateDayKey(r.lastReviewed);
       if (k) activeDayKeys.add(k);
     });
     analyticsLogs.forEach((l) => {
@@ -170,49 +159,58 @@ export const learningProfileService = {
       const k = calculateDayKey(n.updatedAt || n.createdAt);
       if (k) activeDayKeys.add(k);
     });
-    const daysActive = Math.max(activeDayKeys.size, (existingProfile?.studyStreak ? 1 : 0));
+    smartNotes.forEach((note) => {
+      const k = calculateDayKey(note.updatedAt || note.createdAt);
+      if (k) activeDayKeys.add(k);
+    });
+    const daysActive = activeDayKeys.size;
 
     // B. Quizzes
     const quizCount = quizResults.length;
-    const avgQuizScore = quizCount
-      ? Math.round(quizResults.reduce((sum, q) => sum + (q.score || 0), 0) / quizCount)
+    const scoredQuizzes = quizResults.filter((quiz) =>
+      Number.isFinite(Number(quiz.score)) && Number(quiz.score) >= 0 && Number(quiz.score) <= 100 &&
+      Number.isFinite(Number(quiz.totalQuestions)) && Number(quiz.totalQuestions) > 0,
+    );
+    const totalQuizQuestions = scoredQuizzes.reduce((sum, quiz) => sum + Number(quiz.totalQuestions), 0);
+    const weightedQuizPoints = scoredQuizzes.reduce(
+      (sum, quiz) => {
+        const total = Number(quiz.totalQuestions);
+        const scorePoints = (Number(quiz.score) / 100) * total;
+        const correctCount = Number(quiz.correctCount);
+        const hasValidCorrectCount = Number.isInteger(correctCount) && correctCount >= 0 && correctCount <= total;
+        const points = hasValidCorrectCount && (correctCount > 0 || Number(quiz.score) === 0)
+          ? correctCount
+          : scorePoints;
+        return sum + points;
+      },
+      0,
+    );
+    const avgQuizScore = totalQuizQuestions > 0
+      ? Math.round((weightedQuizPoints / totalQuizQuestions) * 100)
       : null;
-    const totalQuizCorrect = quizResults.reduce((sum, q) => sum + (q.correctCount || 0), 0);
-    const totalQuizQuestions = quizResults.reduce((sum, q) => sum + (q.totalQuestions || 8), 0);
-    const quizAccuracyRatio = totalQuizQuestions > 0 ? (totalQuizCorrect / totalQuizQuestions) : (avgQuizScore ? avgQuizScore / 100 : 0.7);
 
     // C. Lessons & Video Telemetry
     const lessonsAttempted = lessonProgress.length;
-    const lessonsCompleted = lessonProgress.filter((p) => p.completed || (p.watchPercentage || 0) >= 80).length;
-    const lessonCompletionRate = lessonsAttempted > 0 ? (lessonsCompleted / lessonsAttempted) : null;
-    const avgWatchPercentage = lessonsAttempted > 0
-      ? Math.round(lessonProgress.reduce((sum, p) => sum + (p.watchPercentage || 0), 0) / lessonsAttempted)
-      : null;
-    const totalPauses = lessonProgress.reduce((sum, p) => sum + (p.pauseCount || 0), 0);
-    const avgPauseFrequency = lessonsAttempted > 0 ? (totalPauses / lessonsAttempted) : 1.0;
     const totalTimeSpentSeconds = lessonProgress.reduce((sum, p) => sum + (p.timeSpent || 0), 0);
     const avgSessionTimeMinutes = lessonsAttempted > 0
-      ? Math.max(10, Math.round((totalTimeSpentSeconds / lessonsAttempted) / 60))
-      : (existingProfile?.sessionDuration ? Math.round(existingProfile.sessionDuration / 60) : 25);
+      ? Math.round((totalTimeSpentSeconds / lessonsAttempted) / 60)
+      : 0;
 
     // D. Thinking Lab & Problem Solving
     const thinkingSubmissionsCount = challengeSubmissions.length;
-    const avgThinkingScore = thinkingSubmissionsCount
-      ? Math.round(challengeSubmissions.reduce((sum, s) => sum + (s.score || 0), 0) / thinkingSubmissionsCount)
+    const avgThinkingScore = averageObserved(challengeSubmissions, 'score');
+    const thinkingProblemSolving = thinkingSkills?.problemSolving !== null && thinkingSkills?.problemSolving !== undefined &&
+      Number.isFinite(Number(thinkingSkills.problemSolving))
+      ? Number(thinkingSkills.problemSolving)
       : null;
-    const thinkingProblemSolving = thinkingSkills?.problemSolving || null;
 
     // E. Learning Academy
     const academyCount = academyActivities.length;
-    const avgAcademyUnderstanding = academyCount
-      ? Math.round(academyActivities.reduce((sum, a) => sum + (a.understanding || 0), 0) / academyCount)
-      : null;
-    const avgTeachBackScore = academyCount
-      ? Math.round(academyActivities.reduce((sum, a) => sum + (a.teachBackScore || 0), 0) / academyCount)
-      : null;
 
     // F. Revisions & Spaced Repetition
-    const revisionCount = revisions.length + (existingProfile?.revisionFrequency || 0);
+    // Count current scheduled revision records once. Adding the cached profile
+    // value here caused every profile read to count the same revisions again.
+    const revisionCount = revisions.filter((revision) => revision.lastReviewed || Number(revision.repetitions) > 0).length;
 
     // Total activities
     const totalPlatformActivities =
@@ -226,164 +224,106 @@ export const learningProfileService = {
 
     // 4. Handle Case: Completely New Student (no assessment & no activity)
     if (!hasAssessment && totalPlatformActivities === 0) {
-      return {
-        overallScore: 50,
-        skills: {
-          programming: 50,
-          problemSolving: 50,
-          consistency: 50,
-          confidence: 50,
-          academicPerformance: 50,
-        },
-        strengths: ['Eager learner ready to build foundation'],
-        areasToImprove: ['Complete initial learning assessment', 'Explore interactive lessons and quizzes'],
-        learningStyle: 'Learning style is still being analyzed',
-        studyAvailability: '1-2',
-        currentCapability: 'Beginner',
-        primaryGoal: 'Skill development',
-        isDeveloping: true,
-        statusMessage: 'Learning profile is still developing.',
-      };
+      return buildEmptyLearningProfile();
     }
 
-    // 5. Dynamic Skill Calculations (Blended with Assessment Baseline)
-    const baseWeightRamp = Math.min(0.85, totalPlatformActivities * 0.12);
+    // 5. Evidence-backed skill values. Lesson completion measures engagement,
+    // not demonstrated mastery, so it does not count as a programming score.
+    const programmingWeight = Math.min(0.9, totalQuizQuestions * 0.03);
+    const finalProgramming = blendObserved(baseProgramming, avgQuizScore, programmingWeight);
 
-    // 1. Programming
-    let liveProgramming = baseProgramming;
-    if (avgQuizScore !== null && lessonCompletionRate !== null) {
-      liveProgramming = Math.round(avgQuizScore * 0.65 + (lessonCompletionRate * 100) * 0.35);
-    } else if (avgQuizScore !== null) {
-      liveProgramming = avgQuizScore;
-    } else if (lessonCompletionRate !== null) {
-      liveProgramming = Math.round((lessonCompletionRate * 100));
-    }
-    const progWeight = Math.min(0.9, (quizCount * 0.25) + (lessonsAttempted * 0.15));
-    const finalProgramming = clamp((1 - progWeight) * baseProgramming + progWeight * liveProgramming);
+    const liveProblemSolving = avgThinkingScore ?? thinkingProblemSolving;
+    const problemWeight = Math.min(0.9, thinkingSubmissionsCount * 0.25 + (thinkingSkills ? 0.3 : 0));
+    const finalProblemSolving = blendObserved(baseProblemSolving, liveProblemSolving, problemWeight);
 
-    // 2. Problem Solving
-    let liveProblemSolving = baseProblemSolving;
-    if (avgThinkingScore !== null && thinkingProblemSolving !== null) {
-      liveProblemSolving = Math.round(avgThinkingScore * 0.5 + thinkingProblemSolving * 0.5);
-    } else if (avgThinkingScore !== null) {
-      liveProblemSolving = avgThinkingScore;
-    } else if (thinkingProblemSolving !== null) {
-      liveProblemSolving = thinkingProblemSolving;
-    } else if (avgAcademyUnderstanding !== null) {
-      liveProblemSolving = avgAcademyUnderstanding;
-    }
-    const probWeight = Math.min(0.9, (thinkingSubmissionsCount * 0.25) + ((thinkingSkills ? 1 : 0) * 0.3) + (academyCount * 0.1));
-    const finalProblemSolving = clamp((1 - probWeight) * baseProblemSolving + probWeight * liveProblemSolving);
+    const activeDayScore = daysActive > 0 ? Math.min(100, Math.round((daysActive / 10) * 100)) : null;
+    const studyEventCount = lessonsAttempted + quizCount + academyCount + thinkingSubmissionsCount;
+    const sessionFrequencyScore = studyEventCount > 0 ? Math.min(100, studyEventCount * 15) : null;
+    const revisionActivityScore = revisionCount > 0 ? Math.min(100, revisionCount * 20) : null;
+    const consistencySignals = [
+      { value: activeDayScore, weight: 0.55 },
+      { value: sessionFrequencyScore, weight: 0.30 },
+      { value: revisionActivityScore, weight: 0.15 },
+    ].filter((signal) => signal.value !== null);
+    const liveConsistency = consistencySignals.length
+      ? Math.round(consistencySignals.reduce((sum, signal) => sum + signal.value * signal.weight, 0) /
+        consistencySignals.reduce((sum, signal) => sum + signal.weight, 0))
+      : null;
+    const consistencyWeight = Math.min(0.9, 0.2 + totalPlatformActivities * 0.08 + daysActive * 0.04);
+    const finalConsistency = blendObserved(baseConsistency, liveConsistency, consistencyWeight);
 
-    // 3. Consistency
-    const daysScore = Math.min(100, Math.round((daysActive / 10) * 100));
-    const streakVal = existingProfile?.studyStreak || (daysActive > 1 ? 2 : 1);
-    const streakScore = Math.min(100, streakVal * 20);
-    const sessionFreqScore = Math.min(100, (lessonsAttempted + quizCount + academyCount) * 15);
-    const revisionScore = Math.min(100, revisionCount * 20);
-    const liveConsistency = Math.round(
-      daysScore * 0.35 +
-      streakScore * 0.30 +
-      sessionFreqScore * 0.20 +
-      revisionScore * 0.15
-    );
-    const consWeight = Math.min(0.9, 0.2 + (totalPlatformActivities * 0.08) + (daysActive * 0.04));
-    const finalConsistency = clamp((1 - consWeight) * baseConsistency + consWeight * liveConsistency);
+    const recordedConfidence = Number(existingProfile?.confidenceLevel);
+    const liveConfidence = Number.isFinite(recordedConfidence) && recordedConfidence >= 1 && recordedConfidence <= 5
+      ? recordedConfidence * 20
+      : null;
+    const finalConfidence = blendObserved(baseConfidence, liveConfidence, 0.5);
 
-    // 4. Confidence
-    const quizConfidence = avgQuizScore ? Math.round(avgQuizScore * 0.85 + 10) : baseConfidence;
-    const subjectiveConfidence = existingProfile?.confidenceLevel ? existingProfile.confidenceLevel * 20 : baseConfidence;
-    const liveConfidence = Math.round(quizConfidence * 0.6 + subjectiveConfidence * 0.4);
-    const confWeight = Math.min(0.85, (quizCount * 0.2) + (thinkingSubmissionsCount * 0.2));
-    const finalConfidence = clamp((1 - confWeight) * baseConfidence + confWeight * liveConfidence);
+    const finalAcademic = blendObserved(baseAcademic, avgQuizScore, Math.min(0.9, totalQuizQuestions * 0.03));
 
-    // 5. Academic Performance
-    let liveAcademic = baseAcademic;
-    if (avgQuizScore !== null && avgTeachBackScore !== null) {
-      liveAcademic = Math.round(avgQuizScore * 0.65 + avgTeachBackScore * 0.35);
-    } else if (avgQuizScore !== null) {
-      liveAcademic = avgQuizScore;
-    } else if (avgTeachBackScore !== null) {
-      liveAcademic = avgTeachBackScore;
-    }
-    const acadWeight = Math.min(0.9, (quizCount * 0.2) + (academyCount * 0.15));
-    const finalAcademic = clamp((1 - acadWeight) * baseAcademic + acadWeight * liveAcademic);
-
-    const skills = {
+    const skills = Object.fromEntries(Object.entries({
       programming: finalProgramming,
       problemSolving: finalProblemSolving,
       consistency: finalConsistency,
       confidence: finalConfidence,
       academicPerformance: finalAcademic,
-    };
+    }).map(([key, value]) => [key, value === null || value === undefined ? null : clamp(value)]));
 
-    // 6. Run ML Models Inference with Exact Feature Ordering
-    const mlInput = {
-      quizScore: avgQuizScore || assessmentKnowledgeScore || finalAcademic || 75.0,
-      taskCompletion: lessonCompletionRate !== null ? lessonCompletionRate : 0.8,
-      studyTime: avgSessionTimeMinutes || 25.0,
-      revisionCount: Math.min(7, revisionCount || 1),
-      daysActive: Math.max(1, daysActive),
-      averageWatchPercentage: avgWatchPercentage !== null ? (avgWatchPercentage / 100.0) : 0.6,
-      pauseFrequency: avgPauseFrequency || 1.5,
-      videoWatchRate: lessonsAttempted > 0 ? Math.min(1.0, lessonsAttempted / 5) : 0.5,
-      averageAnswerTime: 28.0,
-      confidenceLevel: (finalConfidence / 100.0) * 5.0,
-    };
+    // 6. Overall score uses only scored knowledge checks and programming quizzes.
+    const knowledgeCheckCount = hasAssessment && assessmentKnowledgeScore !== null && assessmentKnowledgeScore !== undefined ? 3 : 0;
+    const observedQuestionCount = totalQuizQuestions + knowledgeCheckCount;
+    const observedCorrectCount = weightedQuizPoints +
+      (assessmentKnowledgeScore === null ? 0 : (assessmentKnowledgeScore / 100) * knowledgeCheckCount);
+    const overallScore = observedQuestionCount > 0
+      ? clamp((observedCorrectCount / observedQuestionCount) * 100)
+      : null;
+    const currentCapability = assessment?.responses?.programmingLevel || 'Not provided';
 
-    const mlResult = await predictLearningProfile(mlInput);
+    // 7. Learning preference is a direct assessment answer, never inferred from clicks.
+    const learningPreference = assessment?.insights?.learningPreference || 'Not provided';
 
-    // 7. Overall Mastery & Capability
-    const overallScore = clamp(mlResult.masteryScore || (
-      finalProgramming * 0.25 +
-      finalProblemSolving * 0.25 +
-      finalConsistency * 0.20 +
-      finalConfidence * 0.15 +
-      finalAcademic * 0.15
-    ));
-    const currentCapability = getCapabilityLabel(overallScore);
+    // 8. Dynamic Strengths & Areas to Improve; no predicted retention score is
+    // presented as measured evidence.
+    const strengths = buildStrengths({
+      overallScore,
+      objectiveQuestionCount: observedQuestionCount,
+      thinkingSubmissionsCount,
+      avgThinkingScore,
+    });
+    const areasToImprove = buildAreasToImprove(skills);
 
-    // 8. Learning Style:
-    // If student has insufficient video watch and quiz activity, show "Learning style is still being analyzed"
-    const hasEnoughStyleActivity = (lessonsAttempted > 0 && avgWatchPercentage !== null) || quizCount > 0;
-    const learningStyle = hasEnoughStyleActivity
-      ? (mlResult.learningStyle || 'Visual')
-      : 'Learning style is still being analyzed';
+    // 8. Study Availability & Primary Goal from explicit assessment answers
+    const studyAvailability = assessment?.responses?.studyHoursPerDay || assessment?.insights?.studyAvailability || 'Not provided';
+    const primaryGoal = assessment?.responses?.primaryGoal || assessment?.insights?.primaryGoal || 'Not provided';
 
-    // 9. Retention Probability
-    const retentionProb = Number(mlResult.retentionProbability ?? 0.7);
-    const retentionScore100 = clamp(retentionProb * 100);
-
-    // 10. Dynamic Strengths & Areas to Improve
-    const strengths = buildStrengths(skills, retentionProb, overallScore);
-    const areasToImprove = buildAreasToImprove(skills, retentionScore100);
-
-    // 11. Study Availability & Primary Goal from Assessment
-    const studyAvailability = assessment?.responses?.studyHoursPerDay || assessment?.insights?.studyAvailability || '1-2';
-    const primaryGoal = assessment?.responses?.primaryGoal || assessment?.insights?.primaryGoal || 'Board/college exams';
-
-    // 12. Sync Persistent LearningProfile in MongoDB
+    // 9. Sync observed profile data; clear prior synthetic estimates.
     await this._syncProfileRecord(uidStr, {
       masteryScore: overallScore,
-      retentionProbability: retentionProb,
-      learningStyle: hasEnoughStyleActivity ? (mlResult.learningStyle || 'Visual') : 'Mixed',
-      difficulty: mlResult.difficulty || 'Intermediate',
-      sessionDuration: avgSessionTimeMinutes * 60,
+      retentionProbability: null,
+      learningStyle: assessment?.insights?.learningPreference || null,
+      difficulty: null,
+      predictionSource: overallScore === null ? null : 'observed_assessment_results',
+      predictionTrainingData: 'observed',
+      difficultySource: null,
+      sessionDuration: lessonsAttempted > 0 ? avgSessionTimeMinutes * 60 : null,
       revisionFrequency: revisionCount,
       daysActive,
     });
 
-    const isDeveloping = totalPlatformActivities < 3;
-    const statusMessage = isDeveloping
-      ? 'Learning profile is still developing. Ongoing activity continues to refine your profile.'
-      : 'Learning profile is actively updated based on your platform activity and ML predictions.';
+    const isDeveloping = observedQuestionCount < 10;
+    const statusMessage = observedQuestionCount === 0
+      ? 'No scored quiz results are available yet. Complete a knowledge check or quiz to create an observed score.'
+      : isDeveloping
+        ? `Your profile is still developing. The score currently uses ${observedQuestionCount} scored question${observedQuestionCount === 1 ? '' : 's'}; complete more quizzes for a steadier result.`
+        : `The overall score uses ${observedQuestionCount} scored questions. Other indicators are based on your assessment answers and recorded learning activity.`;
 
     return {
+      hasProfileData: hasAssessment || totalPlatformActivities > 0,
+      hasAssessment,
       overallScore,
       skills,
       strengths,
       areasToImprove,
-      learningStyle,
+      learningStyle: learningPreference,
       studyAvailability,
       currentCapability,
       primaryGoal,
@@ -392,14 +332,19 @@ export const learningProfileService = {
       insights: {
         strengths,
         areasToImprove,
-        learningPreference: learningStyle,
+        learningPreference,
         studyAvailability,
         currentCapability,
         primaryGoal,
       },
-      assessmentScore: assessmentKnowledgeScore || overallScore,
-      retentionProbability: retentionProb,
-      difficulty: mlResult.difficulty || 'Intermediate',
+      assessmentScore: assessmentKnowledgeScore,
+      objectiveQuestionCount: observedQuestionCount,
+      scoredQuizCount: scoredQuizzes.length,
+      retentionProbability: null,
+      difficulty: null,
+      predictionSource: overallScore === null ? null : 'observed_assessment_results',
+      predictionTrainingData: 'observed',
+      difficultySource: null,
       isDeveloping,
       statusMessage,
     };
@@ -413,8 +358,11 @@ export const learningProfileService = {
           $set: {
             masteryScore: updates.masteryScore,
             retentionProbability: updates.retentionProbability,
-            ...(updates.learningStyle ? { learningStyle: updates.learningStyle } : {}),
-            ...(updates.difficulty ? { difficulty: updates.difficulty } : {}),
+            ...(Object.hasOwn(updates, 'learningStyle') ? { learningStyle: updates.learningStyle } : {}),
+            ...(Object.hasOwn(updates, 'difficulty') ? { difficulty: updates.difficulty } : {}),
+            predictionSource: updates.predictionSource,
+            predictionTrainingData: updates.predictionTrainingData,
+            difficultySource: updates.difficultySource,
             sessionDuration: updates.sessionDuration,
             revisionFrequency: updates.revisionFrequency,
           },
@@ -426,26 +374,6 @@ export const learningProfileService = {
     }
   },
 
-  _getFallbackProfile() {
-    return {
-      overallScore: 50,
-      skills: {
-        programming: 50,
-        problemSolving: 50,
-        consistency: 50,
-        confidence: 50,
-        academicPerformance: 50,
-      },
-      strengths: ['Building core foundational capabilities'],
-      areasToImprove: ['Complete study sessions to refine your profile'],
-      learningStyle: 'Learning style is still being analyzed',
-      studyAvailability: '1-2',
-      currentCapability: 'Beginner',
-      primaryGoal: 'Skill development',
-      isDeveloping: true,
-      statusMessage: 'Learning profile is still developing.',
-    };
-  },
 };
 
 export default learningProfileService;

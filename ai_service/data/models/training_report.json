@@ -1,0 +1,185 @@
+{
+  "trainingVersion": 3,
+  "datasetType": "SYNTHETIC_DATA",
+  "datasetSha256": "11771ea580c5adb355ad99d128fe273677229c8e2bd6a691ee31d501ab54acbe",
+  "validationMeaning": "Synthetic holdout only; not evidence of real-student performance.",
+  "rows": 10000,
+  "trainRows": 7537,
+  "testRows": 2463,
+  "split": {
+    "method": "group holdout by synthetic persona",
+    "testSize": 0.2,
+    "seed": 42,
+    "heldOutPersonas": [
+      "Type B - Hard Worker",
+      "Type F - Exam-Focused Student"
+    ],
+    "retentionEvaluation": "stratified random holdout",
+    "difficultyEvaluation": "stratified random holdout"
+  },
+  "models": {
+    "mastery": {
+      "algorithm": "ExtraTreesRegressor",
+      "features": [
+        "average_quiz_score",
+        "lesson_completion_rate",
+        "average_session_time",
+        "revision_frequency"
+      ],
+      "target": "synthetic overall_mastery_score scaled 0-100",
+      "r2": 0.5809,
+      "mae": 2.0017,
+      "baselineMeanPredictorMae": 18.7218
+    },
+    "retention": {
+      "algorithm": "LogisticRegression",
+      "features": [
+        "average_session_time",
+        "revision_frequency",
+        "days_active",
+        "quiz_accuracy"
+      ],
+      "target": "synthetic retention_score >= 0.65",
+      "accuracy": 0.941,
+      "balancedAccuracy": 0.9374,
+      "majorityClassBaselineAccuracy": 0.646,
+      "majorityClassBaselineBalancedAccuracy": 0.5,
+      "classReport": {
+        "0": {
+          "precision": 0.9097222222222222,
+          "recall": 0.9251412429378532,
+          "f1-score": 0.9173669467787114,
+          "support": 708.0
+        },
+        "1": {
+          "precision": 0.95859375,
+          "recall": 0.9496904024767802,
+          "f1-score": 0.9541213063763608,
+          "support": 1292.0
+        },
+        "accuracy": 0.941,
+        "macro avg": {
+          "precision": 0.9341579861111111,
+          "recall": 0.9374158227073166,
+          "f1-score": 0.9357441265775361,
+          "support": 2000.0
+        },
+        "weighted avg": {
+          "precision": 0.9412932291666666,
+          "recall": 0.941,
+          "f1-score": 0.941110263078793,
+          "support": 2000.0
+        }
+      }
+    },
+    "style": {
+      "algorithm": "RandomForestClassifier",
+      "features": [
+        "average_watch_percentage",
+        "pause_frequency",
+        "video_watch_rate",
+        "average_answer_time"
+      ],
+      "target": "synthetic preferred_learning_mode",
+      "accuracy": 0.8689,
+      "balancedAccuracy": 0.8779,
+      "classReport": {
+        "0": {
+          "precision": 0.9652173913043478,
+          "recall": 0.6995798319327731,
+          "f1-score": 0.8112058465286236,
+          "support": 952.0
+        },
+        "1": {
+          "precision": 0.8963730569948186,
+          "recall": 0.9558011049723757,
+          "f1-score": 0.9251336898395722,
+          "support": 181.0
+        },
+        "2": {
+          "precision": 0.8236824983734548,
+          "recall": 0.9813953488372092,
+          "f1-score": 0.8956490979837284,
+          "support": 1290.0
+        },
+        "3": {
+          "precision": 0.813953488372093,
+          "recall": 0.875,
+          "f1-score": 0.8433734939759037,
+          "support": 40.0
+        },
+        "accuracy": 0.8688591149005278,
+        "macro avg": {
+          "precision": 0.8748066087611786,
+          "recall": 0.8779440714355895,
+          "f1-score": 0.868840532081957,
+          "support": 2463.0
+        },
+        "weighted avg": {
+          "precision": 0.8835724897581978,
+          "recall": 0.8688591149005278,
+          "f1-score": 0.8643278278174007,
+          "support": 2463.0
+        }
+      }
+    },
+    "difficulty": {
+      "algorithm": "RandomForestClassifier",
+      "features": [
+        "mastery_100",
+        "average_quiz_score",
+        "confidence_5"
+      ],
+      "target": "synthetic recommended_difficulty by student persona",
+      "accuracy": 0.94,
+      "balancedAccuracy": 0.9371,
+      "classReport": {
+        "0": {
+          "precision": 0.9800399201596807,
+          "recall": 0.9879275653923542,
+          "f1-score": 0.9839679358717435,
+          "support": 497.0
+        },
+        "1": {
+          "precision": 0.9359223300970874,
+          "recall": 0.9469548133595285,
+          "f1-score": 0.94140625,
+          "support": 1018.0
+        },
+        "2": {
+          "precision": 0.906183368869936,
+          "recall": 0.8762886597938144,
+          "f1-score": 0.8909853249475891,
+          "support": 485.0
+        },
+        "accuracy": 0.94,
+        "macro avg": {
+          "precision": 0.940715206375568,
+          "recall": 0.9370570128485657,
+          "f1-score": 0.9387865036064441,
+          "support": 2000.0
+        },
+        "weighted avg": {
+          "precision": 0.9396738531300575,
+          "recall": 0.94,
+          "f1-score": 0.9397557546139186,
+          "support": 2000.0
+        }
+      }
+    }
+  },
+  "labelDefinitions": {
+    "learningStyle": [
+      "Visual",
+      "Text/Reading",
+      "Practical/Hands-on",
+      "Interactive Quiz"
+    ],
+    "difficulty": [
+      "Beginner",
+      "Intermediate",
+      "Advanced"
+    ]
+  },
+  "trainedAt": "2026-10-24T10:52:34.312703+00:00"
+}

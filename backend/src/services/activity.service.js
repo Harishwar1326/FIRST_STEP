@@ -3,6 +3,12 @@ import { ActivityLog, AdminNotification } from '../models/adminActivity.model.js
 
 const isDbReady = () => mongoose.connection.readyState !== 0
 
+export const normalizeAdminActivityLimit = (value, fallback) => {
+  const parsed = Number(value)
+  const limit = Number.isFinite(parsed) ? Math.floor(parsed) : fallback
+  return Math.min(100, Math.max(1, limit || fallback))
+}
+
 export const activityService = {
   /**
    * Log student activity (register, login, etc.) and create admin notification.
@@ -79,7 +85,7 @@ export const activityService = {
     try {
       const [unreadCount, notifications] = await Promise.all([
         AdminNotification.countDocuments({ read: false }),
-        AdminNotification.find().sort({ createdAt: -1 }).limit(limit).lean(),
+        AdminNotification.find().sort({ createdAt: -1 }).limit(normalizeAdminActivityLimit(limit, 20)).lean(),
       ])
 
       return {
@@ -131,7 +137,7 @@ export const activityService = {
     }
 
     try {
-      const logs = await ActivityLog.find().sort({ createdAt: -1 }).limit(limit).lean()
+      const logs = await ActivityLog.find().sort({ createdAt: -1 }).limit(normalizeAdminActivityLimit(limit, 25)).lean()
       return {
         activities: logs.map((log) => ({
           id: String(log._id),

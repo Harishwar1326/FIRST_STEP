@@ -8,7 +8,11 @@ const analyticsSchema = new mongoose.Schema(
     },
     activityType: {
       type: String,
-      enum: ['study_lesson', 'submit_quiz', 'submit_task', 'upload_notes', 'drawing_canvas', 'ask_question', 'revision'],
+      enum: [
+        'study_lesson', 'submit_quiz', 'submit_task', 'upload_notes', 'drawing_canvas', 'ask_question', 'revision',
+        'smart_notes_analysis', 'smart_notes_notes-to-learning', 'smart_notes_blind-spot-detection',
+        'smart_notes_explain-drawing', 'smart_notes_personalized-revision',
+      ],
       required: true,
     },
     lessonId: {

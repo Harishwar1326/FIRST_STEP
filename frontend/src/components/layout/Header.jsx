@@ -46,12 +46,12 @@ const Header = () => {
 
   const isAdmin = user?.role === 'admin'
 
-  // Fetch notifications for Admin with fast 3s polling
+  // Keep notification polling below the production API request budget.
   const notifQuery = useQuery({
     queryKey: ['admin-notifications'],
     queryFn: adminService.getNotifications,
     enabled: Boolean(isAdmin),
-    refetchInterval: 3000, // Poll every 3 seconds for near-instant alerts
+    refetchInterval: 30000,
   })
 
   const markReadMutation = useMutation({

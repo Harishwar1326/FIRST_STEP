@@ -20,7 +20,8 @@ export const AuthProvider = ({ children }) => {
   const fetchUser = async () => {
     try {
       const response = await api.get('/auth/me')
-      setUser(response.data.user)
+      const payload = response.data?.data || response.data
+      setUser(payload?.user || payload)
     } catch (error) {
       localStorage.removeItem('token')
       delete api.defaults.headers.common['Authorization']
@@ -31,7 +32,14 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     const response = await api.post('/auth/login', { email, password })
-    const { token, user } = response.data
+    const payload = response.data?.data || response.data
+    const token = payload?.token
+    const user = payload?.user
+
+    if (!token) {
+      throw new Error(response.data?.message || 'Login did not return a valid authentication token')
+    }
+
     localStorage.setItem('token', token)
     api.defaults.headers.common['Authorization'] = `Bearer ${token}`
     setUser(user)
@@ -40,7 +48,14 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (userData) => {
     const response = await api.post('/auth/register', userData)
-    const { token, user } = response.data
+    const payload = response.data?.data || response.data
+    const token = payload?.token
+    const user = payload?.user
+
+    if (!token) {
+      throw new Error(response.data?.message || 'Registration did not return a valid authentication token')
+    }
+
     localStorage.setItem('token', token)
     api.defaults.headers.common['Authorization'] = `Bearer ${token}`
     setUser(user)

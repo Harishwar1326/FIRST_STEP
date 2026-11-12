@@ -42,13 +42,13 @@ const ActivityRow = ({ item }) => {
 }
 
 const OverviewCard = ({ label, value, icon: Icon }) => (
-  <Card className="p-4">
+  <Card className="progress-stat p-4">
     <div className="flex items-start justify-between gap-3">
       <div>
         <p className="text-[10px] font-black uppercase tracking-[0.16em] text-muted">{label}</p>
         <p className="mt-2 font-display text-2xl font-black text-primary">{value}</p>
       </div>
-      <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-app bg-elevated text-secondary">
+      <div className="progress-stat-icon flex h-10 w-10 items-center justify-center rounded-xl border border-app bg-elevated text-secondary">
         <Icon size={19} strokeWidth={1.5} />
       </div>
     </div>
@@ -128,7 +128,7 @@ const LearningProgressSection = ({ data, isLoading, isError, errorMessage }) => 
                     <p className="font-black text-primary">{subject.title}</p>
                     <span className="text-sm font-black text-secondary">{subject.progressPercent || 0}%</span>
                   </div>
-                  <ProgressBar value={subject.progressPercent || 0} />
+                  <ProgressBar value={subject.progressPercent || 0} tone="coral" />
                   <p className="mt-1 text-xs font-semibold text-muted">
                     {subject.lessonsCompleted || 0} of {subject.lessonsTotal || 0} lessons completed
                   </p>

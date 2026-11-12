@@ -1,13 +1,12 @@
 import { callGroqJson } from "../utils/groqClient.js";
 import { callGeminiJson } from "../utils/geminiClient.js";
-import { twinService } from "./twin.service.js";
 import { Analytics } from "../models/analytics.model.js";
 import { Note } from "../models/note.model.js";
 import { chromaNotesService } from "./chromaNotes.service.js";
+import { modelPersonalizationService } from "./modelPersonalization.service.js";
 
-// Prefer Google Gemini (responseMimeType application/json) with Groq as a
-// transparent fallback, then local rule-engine fallbacks. Each AI function
-// below follows: GEMINI → GROQ → throw (caught by the service layer → local).
+// Prefer Gemini, then Groq, then local Ollama for JSON generation. Each
+// caller keeps its deterministic fallback if every configured provider fails.
 const aiCallJson = async (params) => {
   const gem = await callGeminiJson(params);
   if (gem) return gem;
@@ -45,6 +44,7 @@ const aiAnalyzeNotes = async ({
 
 const notesToLearningSystem = [
   "You convert student notes into structured learning material in FirstStep Smart Notes Studio.",
+  "When abilityGuidance is provided, use it to calibrate explanation depth, question difficulty, and practice volume; prioritize listed weak concepts. Treat ability estimates as guidance, not certainty.",
   "Return ONLY valid JSON, no markdown fences, with the following shape:",
   "{",
   '  flashcards: { front: string, back: string, concept: string, difficulty: "easy"|"medium"|"hard" }[], // 5..8',
@@ -62,10 +62,11 @@ const aiNotesToLearning = async ({
   content,
   concepts,
   keywords,
+  abilityGuidance,
 }) =>
   aiCallJson({
     systemPrompt: notesToLearningSystem,
-    userPayload: { title, subject, content, concepts, keywords },
+    userPayload: { title, subject, content, concepts, keywords, abilityGuidance },
     maxTokens: 1000,
     temperature: 0.35,
   });
@@ -165,6 +166,7 @@ const aiExplainDrawing = async ({
 const revisionSystem = [
   "You build a personalized time-boxed revision plan in FirstStep Smart Notes Studio.",
   "Use the provided weak concepts, recent revision activity, and the exact number of MINUTES the student has.",
+  "When abilityGuidance is provided, calibrate task difficulty and use retentionEstimate to emphasize retrieval practice and spaced review when retention is low.",
   "Return JSON: { totalMinutes: number, blocks: { title: string, minutes: number, activity: string, focusConcepts: string[], technique: string }[], priorityWeakConcepts: string[], whyFocused: string }",
   "Sum of block minutes MUST equal totalMinutes exactly. Use real study techniques: Active Recall, Spaced Repetition, Blurting, Feynman, Pomodoro, Practice Testing, Interleaving, Exam Simulation.",
 ].join("\n");
@@ -175,6 +177,7 @@ const aiPersonalizedRevision = async ({
   weakConcepts = [],
   strongConcepts = [],
   recentActivity = [],
+  abilityGuidance = null,
 }) =>
   aiCallJson({
     systemPrompt: revisionSystem,
@@ -184,6 +187,7 @@ const aiPersonalizedRevision = async ({
       weakConcepts,
       strongConcepts,
       recentActivity,
+      abilityGuidance,
     },
     maxTokens: 650,
     temperature: 0.3,
@@ -221,7 +225,10 @@ const localNotesToLearning = ({
   concepts = [],
   title = "Topic",
   subject = "General",
+  abilityGuidance = null,
 }) => {
+  const cardDifficulty = abilityGuidance?.difficultyBand === "beginner" ? "easy"
+    : abilityGuidance?.difficultyBand === "advanced" ? "hard" : "medium";
   const base = concepts?.length
     ? concepts
     : extractKeywordsSimple(subject + " " + title);
@@ -230,7 +237,7 @@ const localNotesToLearning = ({
       front: `Define ${c} in your own words.`,
       back: `A solid answer names what ${c} IS, what it DOES, and gives 1 tiny example from your notes.`,
       concept: c,
-      difficulty: "medium",
+      difficulty: cardDifficulty,
     })),
     quiz: base.slice(0, 3).map((c, i) => ({
       question: `Which statement about ${c} is most accurate?`,
@@ -247,7 +254,7 @@ const localNotesToLearning = ({
     practiceQuestions: base.slice(0, 2).map((c) => ({
       question: `Show, using a worked example from your notes, how ${c} affects a concrete result.`,
       idealAnswer: `A name + a step-by-step walkthrough + an observation of the result.`,
-      difficulty: "medium",
+      difficulty: cardDifficulty,
     })),
     teachBackChallenges: [
       {
@@ -457,58 +464,37 @@ const localExplainDrawing = ({ textContents = [], shapeCount = 0 }) => ({
   ],
 });
 
-// ============== TWIN INTEGRATION ==============
-const logNotesActivityToTwin = async (userId, activity) => {
-  if (!userId || String(userId).startsWith("guest-")) return; // skip synthetic guests to avoid polluting twin with sparse data
-  try {
-    const topicProgress = {};
-    if (activity.weakConcepts?.length) {
-      activity.weakConcepts.forEach((c) => {
-        topicProgress[typeof c === "string" ? c : c.name || "concept"] = 30;
-      });
-    }
-    if (activity.conceptsLearned?.length) {
-      activity.conceptsLearned.forEach((c) => {
-        topicProgress[typeof c === "string" ? c : c.name || "concept"] = 70;
-      });
-    }
-    const payload = {
-      studySession: {
-        kind: "smart-notes",
-        mode: activity.mode || "analysis",
-        topic: activity.subject || activity.title || "Notes",
-        completed: true,
-        understanding: activity.understanding ?? null,
-        teachBackScore: activity.teachBackScore ?? null,
-        weakConcepts: activity.weakConcepts || [],
-        knowledgeGaps: activity.knowledgeGaps || [],
-      },
-      topicProgress,
-    };
-    await twinService.updateProgress(userId, payload);
-  } catch (_err) {
-    /* never break notes UX on twin failure */
+// Notes feature use is not a study session or an assessment result. Keep it
+// in event analytics without adding fabricated scores to the Learning Twin.
+const notesAnalyticsTypes = {
+  analysis: 'smart_notes_analysis',
+  'notes-to-learning': 'smart_notes_notes-to-learning',
+  'blind-spot-detection': 'smart_notes_blind-spot-detection',
+  'explain-drawing': 'smart_notes_explain-drawing',
+  'personalized-revision': 'smart_notes_personalized-revision',
+}
+
+export const buildNotesAnalyticsRecord = (userId, activity) => {
+  const activityType = notesAnalyticsTypes[activity.mode]
+  if (!userId || String(userId).startsWith('guest-') || !activityType) return null
+  return {
+    userId,
+    activityType,
+    ...(Number.isFinite(activity.assessmentScore) ? { score: activity.assessmentScore } : {}),
+    metadata: {
+      subject: activity.subject,
+      title: activity.title,
+      weakConcepts: activity.weakConcepts || [],
+      knowledgeGaps: activity.knowledgeGaps || [],
+      revisionMinutes: activity.revisionMinutes || null,
+    },
   }
-  try {
-    if (userId && !String(userId).startsWith("guest-")) {
-      await Analytics.create({
-        userId,
-        activityType: `smart_notes_${activity.mode || "analysis"}`,
-        score: activity.understanding || activity.quizPerformance || 0,
-        metadata: {
-          subject: activity.subject,
-          title: activity.title,
-          weakConcepts: activity.weakConcepts || [],
-          knowledgeGaps: activity.knowledgeGaps || [],
-          quizPerformance: activity.quizPerformance || null,
-          revisionMinutes: activity.revisionMinutes || null,
-        },
-        timestamp: new Date(),
-      }).catch(() => {});
-    }
-  } catch (_err) {
-    /* ignore */
-  }
+}
+
+const logNotesActivity = async (userId, activity) => {
+  const record = buildNotesAnalyticsRecord(userId, activity)
+  if (!record) return
+  await Analytics.create(record).catch(() => {});
 };
 
 // ============== KNOWLEDGE EVOLUTION ==============
@@ -517,7 +503,7 @@ const buildKnowledgeEvolution = async (userId, subject) => {
     const match = { userId };
     if (subject) match.subject = subject;
     const history = await Note.find({
-      ...(subject ? { userId, subject } : { userId }),
+      ...(subject ? { userId: String(userId), subject } : { userId: String(userId) }),
     })
       .select(
         "title subject concepts keywords updatedAt createdAt difficulty aiResults",
@@ -623,30 +609,31 @@ export const notesAIService = {
     if (!result || !Array.isArray(result.keyConcepts)) {
       result = localAnalyze(payload);
     }
-    await logNotesActivityToTwin(userId, {
+    await logNotesActivity(userId, {
       mode: "analysis",
       subject: payload.subject,
       title: payload.title,
       weakConcepts: (result.weakConcepts || []).map((w) => w.name),
       conceptsLearned: result.strongConcepts || [],
       knowledgeGaps: result.missingConcepts || [],
-      understanding: Math.round(
-        avg([
-          ...(result.strongConcepts || []).map(() => 85),
-          ...(result.weakConcepts || []).map(() => 45),
-        ]) || 60,
-      ),
     });
     return result;
   },
 
   async notesToLearning(userId, note, { snapshot } = {}) {
+    const guidance = await modelPersonalizationService.getStudentGuidance(userId).catch(() => null);
     const payload = {
       title: note.title,
       subject: note.subject || "General",
       content: snapshot ? drawingToText(snapshot) : note.content || "",
       concepts: note.concepts || [],
       keywords: note.keywords || [],
+      abilityGuidance: guidance ? {
+        difficultyBand: guidance.difficultyBand,
+        masteryEstimate: guidance.masteryEstimate,
+        retentionEstimate: guidance.retentionEstimate,
+        weakConcepts: guidance.weakConcepts,
+      } : null,
     };
     let result = null;
     try {
@@ -660,13 +647,18 @@ export const notesAIService = {
       Array.isArray(result.quiz) &&
       typeof result.revisionSummary === "string";
     if (!hasShape) result = localNotesToLearning(payload);
-    await logNotesActivityToTwin(userId, {
+    if (guidance) result.abilityGuidance = {
+      difficulty: guidance.difficultyBand,
+      source: guidance.source,
+      trainingData: guidance.trainingData,
+      experimental: guidance.experimental,
+    };
+    await logNotesActivity(userId, {
       mode: "notes-to-learning",
       subject: payload.subject,
       title: payload.title,
       conceptsLearned: payload.concepts,
       weakConcepts: [],
-      quizPerformance: 0,
     });
     return result;
   },
@@ -692,7 +684,7 @@ export const notesAIService = {
     }
     if (!result || !Array.isArray(result.knowledgeGaps))
       result = localBlindSpot(payload);
-    await logNotesActivityToTwin(userId, {
+    await logNotesActivity(userId, {
       mode: "blind-spot-detection",
       subject: payload.subject,
       title: payload.title,
@@ -800,29 +792,21 @@ export const notesAIService = {
     }
     if (!result || !Array.isArray(result.elementsDetected))
       result = localExplainDrawing(payload);
-    await logNotesActivityToTwin(userId, {
+    await logNotesActivity(userId, {
       mode: "explain-drawing",
       subject: payload.subject,
       title: payload.noteTitle,
       conceptsLearned: result.elementsDetected || [],
       weakConcepts: result.missingConnections || [],
-      understanding: Math.round(
-        Math.min(
-          100,
-          40 +
-            (result.suggestedImprovements?.length
-              ? (6 - result.suggestedImprovements.length) * 10
-              : 0),
-        ),
-      ),
     });
     return result;
   },
 
   async personalizedRevision(userId, note, minutes, analysis = null) {
+    const guidance = await modelPersonalizationService.getStudentGuidance(userId).catch(() => null);
     const weakConcepts = (analysis?.weakConcepts || [])
       .map((w) => w.name || w)
-      .concat(analysis?.missingConcepts || []);
+      .concat(analysis?.missingConcepts || [], guidance?.weakConcepts || []);
     const strongConcepts =
       analysis?.strongConcepts || note.concepts?.slice(0, 3) || [];
     const recentActivity = (note.activity || []).slice(-6);
@@ -832,6 +816,11 @@ export const notesAIService = {
       weakConcepts,
       strongConcepts,
       recentActivity,
+      abilityGuidance: guidance ? {
+        difficultyBand: guidance.difficultyBand,
+        masteryEstimate: guidance.masteryEstimate,
+        retentionEstimate: guidance.retentionEstimate,
+      } : null,
     };
     let result = null;
     try {
@@ -846,7 +835,13 @@ export const notesAIService = {
     ) {
       result = localRevision(payload);
     }
-    await logNotesActivityToTwin(userId, {
+    if (guidance) result.abilityGuidance = {
+      difficulty: guidance.difficultyBand,
+      source: guidance.source,
+      trainingData: guidance.trainingData,
+      experimental: guidance.experimental,
+    };
+    await logNotesActivity(userId, {
       mode: "personalized-revision",
       subject: payload.subject,
       title: note.title,
@@ -862,9 +857,6 @@ export const notesAIService = {
 };
 
 // ============== HELPERS ==============
-const avg = (nums) =>
-  nums && nums.length ? nums.reduce((s, n) => s + n, 0) / nums.length : 0;
-
 const extractKeywordsSimple = (content) => {
   const stop = new Set([
     "about",

@@ -13,7 +13,7 @@ export const learningAssessmentService = {
 
   getLearningProfile: async () => {
     const response = await api.get('/learning-profile')
-    return response.data
+    return response.data?.profile || response.data
   },
 
   submitAssessment: async (responses) => {

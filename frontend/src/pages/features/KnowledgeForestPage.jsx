@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { AlertCircle, ArrowRight, Loader2, Network, RefreshCw, Route, Search, Target } from 'lucide-react'
+import { useMemo, useRef, useState } from 'react'
+import { AlertCircle, ArrowRight, Loader2, Network, Search } from 'lucide-react'
 import ReactFlow, { Background, Controls, MiniMap, MarkerType } from 'reactflow'
 import 'reactflow/dist/style.css'
 import Badge from '../../components/ui/Badge'
@@ -12,9 +12,9 @@ const KnowledgeForestPage = () => {
   const [mapLoading, setMapLoading] = useState(false)
   const [mapError, setMapError] = useState('')
   const [selectedEntity, setSelectedEntity] = useState(null)
-  const [insights, setInsights] = useState(null)
-  const [insightsLoading, setInsightsLoading] = useState(false)
-  const [insightsError, setInsightsError] = useState('')
+  const [entityDetails, setEntityDetails] = useState(null)
+  const [entityDetailsLoading, setEntityDetailsLoading] = useState(false)
+  const entityRequestId = useRef(0)
 
   const graphNodes = useMemo(() => {
     if (!conceptMap?.nodes?.length) return []
@@ -29,7 +29,7 @@ const KnowledgeForestPage = () => {
       const angle = related.length ? (index / related.length) * Math.PI * 2 - Math.PI / 2 : 0
       return {
         id: node.id,
-        data: { label: node.label, type: node.type },
+        data: { label: node.label, type: node.type, definition: node.definition },
         position: isMain ? { x: centerX, y: centerY } : { x: centerX + Math.cos(angle) * radius, y: centerY + Math.sin(angle) * radius },
         style: {
           width: isMain ? 180 : 150,
@@ -68,7 +68,8 @@ const KnowledgeForestPage = () => {
     try {
       const result = await forestService.generateConceptMap(concept)
       setConceptMap(result)
-      setSelectedEntity(result.nodes?.find((node) => node.label.toLowerCase() === result.mainConcept?.toLowerCase()) || result.nodes?.[0] || null)
+      setSelectedEntity(null)
+      setEntityDetails(null)
     } catch (error) {
       setMapError(error.response?.data?.message || 'Could not build the relationship map right now.')
     } finally {
@@ -76,29 +77,40 @@ const KnowledgeForestPage = () => {
     }
   }
 
-  const loadInsights = async () => {
-    setInsightsLoading(true)
-    setInsightsError('')
+  const selectEntity = async (entity) => {
+    if (!entity || !conceptMap) return
+    const requestId = ++entityRequestId.current
+    setSelectedEntity(entity)
+    setEntityDetails(null)
+    setEntityDetailsLoading(true)
+    window.requestAnimationFrame(() => document.getElementById('forest-entity-details')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }))
+    const connectedEntities = conceptMap.edges
+      .filter((edge) => edge.source === entity.id || edge.target === entity.id)
+      .map((edge) => {
+        const otherId = edge.source === entity.id ? edge.target : edge.source
+        const other = conceptMap.nodes.find((node) => node.id === otherId)
+        return other ? { name: other.label, relationship: edge.label, explanation: edge.explanation } : null
+      })
+      .filter(Boolean)
     try {
-      const [graph, path, gaps] = await Promise.all([
-        forestService.getKnowledgeGraph(),
-        forestService.getLearningPath(),
-        forestService.detectGaps(),
-      ])
-      setInsights({ graph, path, gaps })
-    } catch (error) {
-      setInsightsError(error.response?.data?.message || 'Forest insights are temporarily unavailable.')
+      const details = await forestService.getEntityDetails({
+        concept: conceptMap.mainConcept,
+        entity: entity.label || entity.name,
+        type: entity.type,
+        definition: entity.definition,
+        connectedEntities,
+      })
+      if (requestId === entityRequestId.current) setEntityDetails(details)
+    } catch {
+      // Keep the definition already present in the generated map if detail lookup is unavailable.
+      if (requestId === entityRequestId.current) setEntityDetails(null)
     } finally {
-      setInsightsLoading(false)
+      if (requestId === entityRequestId.current) setEntityDetailsLoading(false)
     }
   }
 
-  useEffect(() => {
-    loadInsights()
-  }, [])
-
   return (
-    <div className="world-page">
+    <div className="world-page knowledge-forest-page">
       <section className="mb-6 flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
         <div>
           <Badge tone="accent">Knowledge Forest</Badge>
@@ -138,7 +150,7 @@ const KnowledgeForestPage = () => {
               className="min-w-0 flex-1 bg-transparent px-2 text-sm font-bold text-primary outline-none placeholder:text-muted"
               placeholder="e.g. photosynthesis"
             />
-            <button type="button" onClick={generateConceptMap} disabled={mapLoading} className="rounded-lg bg-accent px-3 py-2 text-white transition hover:opacity-90 disabled:opacity-60" aria-label="Generate concept map">
+            <button type="button" onClick={generateConceptMap} disabled={mapLoading} className="rounded-lg bg-accent px-3 py-2 text-stone-950 transition hover:opacity-90 disabled:opacity-60" aria-label="Generate concept map">
               {mapLoading ? <Loader2 size={17} className="animate-spin" /> : <ArrowRight size={17} />}
             </button>
           </div>
@@ -158,24 +170,33 @@ const KnowledgeForestPage = () => {
                 <div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-muted">Entity relationship map</p><h2 className="mt-1 font-display text-2xl font-black text-primary">{conceptMap.mainConcept || 'Study material'}</h2></div>
                 <div className="flex gap-2 text-xs font-black text-secondary"><span className="rounded-full bg-elevated px-3 py-1.5">{conceptMap.entityCount || 0} entities</span><span className="rounded-full bg-elevated px-3 py-1.5">{conceptMap.relationshipCount || 0} links</span></div>
               </div>
-              {graphNodes.length ? <div className="relative mt-5 h-[520px] overflow-hidden rounded-xl border border-app bg-elevated"><ReactFlow nodes={graphNodes} edges={graphEdges} fitView minZoom={0.35} maxZoom={1.7} onNodeClick={(_, node) => setSelectedEntity(conceptMap.nodes.find((item) => item.id === node.id) || null)}><MiniMap pannable zoomable nodeColor="var(--color-accent)" /><Controls /><Background gap={24} size={1} /></ReactFlow></div> : <p className="mt-6 text-sm font-bold text-secondary">No entities were returned for this concept.</p>}
-              {selectedEntity && <div className="mt-4 rounded-xl border border-accent/30 bg-accent/10 p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-accent">Selected entity</p><h3 className="mt-1 text-lg font-black text-primary">{selectedEntity.name || selectedEntity.label}</h3><p className="text-xs font-bold text-secondary">{selectedEntity.type}</p></div><button type="button" onClick={() => setSelectedEntity(null)} className="text-xs font-black text-secondary">Close</button></div><div className="mt-3 flex flex-wrap gap-2">{conceptMap.edges.filter((edge) => edge.source === selectedEntity.id || edge.target === selectedEntity.id).map((edge) => { const otherId = edge.source === selectedEntity.id ? edge.target : edge.source; const other = conceptMap.nodes.find((node) => node.id === otherId); return <span key={edge.id} className="rounded-full bg-surface px-3 py-1.5 text-xs font-bold text-secondary">{edge.label}: {other?.label || otherId}</span> })}</div></div>}
+              {conceptMap.processingWarning && <p role="status" className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs font-bold text-amber-900">{conceptMap.processingWarning}</p>}
+              {graphNodes.length ? <div className="relative mt-5 h-[520px] overflow-hidden rounded-xl border border-app bg-elevated"><ReactFlow nodes={graphNodes} edges={graphEdges} fitView minZoom={0.35} maxZoom={1.7} onNodeClick={(_, node) => selectEntity(conceptMap.nodes.find((item) => item.id === node.id))}><MiniMap pannable zoomable nodeColor="var(--color-accent)" /><Controls /><Background gap={24} size={1} /></ReactFlow></div> : <p className="mt-6 text-sm font-bold text-secondary">No entities were returned for this concept.</p>}
+              {selectedEntity && (() => {
+                const relationships = conceptMap.edges.filter((edge) => edge.source === selectedEntity.id || edge.target === selectedEntity.id).map((edge) => {
+                  const otherId = edge.source === selectedEntity.id ? edge.target : edge.source
+                  return { edge, other: conceptMap.nodes.find((node) => node.id === otherId) }
+                })
+                return <div id="forest-entity-details" role="status" aria-live="polite" className="mt-4 scroll-mt-6 rounded-xl border border-accent/30 bg-accent/10 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-accent">Entity details</p><h3 className="mt-1 text-lg font-black text-primary">{selectedEntity.name || selectedEntity.label}</h3><p className="text-xs font-bold text-secondary">{selectedEntity.type}</p></div>
+                    <div className="flex items-center gap-3">{entityDetailsLoading && <Loader2 size={16} className="animate-spin text-accent" aria-label="Loading entity details" />}<button type="button" onClick={() => { entityRequestId.current += 1; setSelectedEntity(null); setEntityDetails(null); setEntityDetailsLoading(false) }} className="text-xs font-black text-secondary">Close</button></div>
+                  </div>
+                  <p className="mt-3 text-sm font-semibold leading-6 text-secondary">{entityDetails?.definition || selectedEntity.definition || 'Looking up a definition for this entity…'}</p>
+                  {entityDetails?.warning && <p role="status" className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-900">{entityDetails.warning}</p>}
+                  {entityDetails?.whyRelated && <p className="mt-3 rounded-lg bg-surface/70 p-3 text-sm font-semibold leading-6 text-secondary"><b className="text-primary">Why it is related: </b>{entityDetails.whyRelated}</p>}
+                  {(entityDetails?.examples?.length || selectedEntity.examples?.length) > 0 && <div className="mt-3"><p className="text-[10px] font-black uppercase tracking-wider text-muted">Examples</p><ul className="mt-1 list-inside list-disc text-sm font-semibold text-secondary">{(entityDetails?.examples?.length ? entityDetails.examples : selectedEntity.examples).map((example, index) => <li key={`${example}-${index}`}>{example}</li>)}</ul></div>}
+                  {entityDetails?.keyFacts?.length > 0 && <div className="mt-3"><p className="text-[10px] font-black uppercase tracking-wider text-muted">Key facts</p><ul className="mt-1 list-inside list-disc text-sm font-semibold text-secondary">{entityDetails.keyFacts.map((fact, index) => <li key={`${fact}-${index}`}>{fact}</li>)}</ul></div>}
+                  <div className="mt-4">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-muted">Connected entities</p>
+                    {relationships.length ? <div className="mt-2 flex flex-wrap gap-2">{relationships.map(({ edge, other }) => other && <button key={edge.id} type="button" onClick={() => selectEntity(other)} title={edge.explanation || `${edge.label} ${other.label}`} className="rounded-full bg-surface px-3 py-1.5 text-xs font-bold text-secondary transition hover:text-primary"><span className="text-accent">{edge.label}:</span> {other.label}</button>)}</div> : <p className="mt-2 text-sm font-semibold text-secondary">No connected entities were returned.</p>}
+                    {relationships.some(({ edge }) => edge.explanation) && <div className="mt-3 space-y-1">{relationships.filter(({ edge }) => edge.explanation).map(({ edge, other }) => <p key={`${edge.id}-explanation`} className="text-xs font-semibold text-secondary"><b>{edge.label}{other ? ` ${other.label}` : ''}:</b> {edge.explanation}</p>)}</div>}
+                  </div>
+                </div>
+              })()}
             </>
           )}
         </Card>
-      </section>
-
-      <section className="mt-6">
-        <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-          <div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-muted">Your forest intelligence</p><h2 className="mt-1 font-display text-3xl font-black text-primary">What should grow next?</h2></div>
-          <button type="button" onClick={loadInsights} disabled={insightsLoading} className="inline-flex items-center gap-2 self-start rounded-xl border border-app bg-surface px-3 py-2 text-xs font-black text-secondary transition hover:border-accent hover:text-primary disabled:opacity-60"><RefreshCw size={15} className={insightsLoading ? 'animate-spin' : ''} /> Refresh insights</button>
-        </div>
-        {insightsError && <p className="mb-4 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-700"><AlertCircle size={16} />{insightsError}</p>}
-        <div className="grid gap-4 lg:grid-cols-3">
-          <Card className="p-5"><div className="flex items-center gap-2 text-accent"><Network size={19} /><p className="text-[10px] font-black uppercase tracking-[0.16em] text-muted">Knowledge graph</p></div><p className="mt-4 font-display text-3xl font-black text-primary">{insights?.graph?.nodes?.length || 0}</p><p className="text-sm font-semibold text-secondary">concepts connected</p><p className="mt-3 text-xs font-bold text-muted">{insights?.graph?.edges?.length || 0} relationships in your current forest</p></Card>
-          <Card className="p-5"><div className="flex items-center gap-2 text-accent"><Route size={19} /><p className="text-[10px] font-black uppercase tracking-[0.16em] text-muted">Learning path</p></div>{insights?.path?.steps?.length ? <><p className="mt-4 text-lg font-black text-primary">Step {insights.path.currentStep || 1}: {insights.path.steps[(insights.path.currentStep || 1) - 1]?.concept || insights.path.steps[0]?.concept}</p><p className="mt-2 text-xs font-semibold text-secondary">{insights.path.progress || 0}% of your path complete</p></> : <p className="mt-4 text-sm font-semibold text-secondary">Complete a few lessons to build your path.</p>}</Card>
-          <Card className="p-5"><div className="flex items-center gap-2 text-accent"><Target size={19} /><p className="text-[10px] font-black uppercase tracking-[0.16em] text-muted">Priority gaps</p></div>{insights?.gaps?.gaps?.length ? <div className="mt-4 space-y-2">{insights.gaps.gaps.slice(0, 3).map((gap) => <div key={gap.conceptId || gap.concept} className="flex items-center justify-between gap-2 rounded-lg bg-elevated px-3 py-2"><span className="truncate text-sm font-black text-primary">{gap.concept}</span><span className="text-[10px] font-black uppercase text-muted">{gap.priority || 'review'}</span></div>)}</div> : <p className="mt-4 text-sm font-semibold text-secondary">No priority gaps detected yet.</p>}</Card>
-        </div>
       </section>
     </div>
   )

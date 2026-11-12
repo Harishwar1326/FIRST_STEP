@@ -1,6 +1,16 @@
 import { query } from '../config/postgres.js';
 import bcrypt from 'bcryptjs';
 
+export const normalizeStudentListOptions = ({ search = '', limit = 25, offset = 0 } = {}) => {
+  const parsedLimit = Number(limit)
+  const parsedOffset = Number(offset)
+  return {
+    search: String(search ?? '').trim().slice(0, 100),
+    limit: Math.min(100, Math.max(1, Math.floor(Number.isFinite(parsedLimit) && parsedLimit ? parsedLimit : 25))),
+    offset: Math.min(100000, Math.max(0, Math.floor(Number.isFinite(parsedOffset) ? parsedOffset : 0))),
+  }
+}
+
 export const userSqlRepository = {
   async create({ name, email, password, role = 'student' }) {
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -12,13 +22,13 @@ export const userSqlRepository = {
       RETURNING id, name, email, role, level, points, created_at, last_active_at
     `;
     
-    const result = await query(sql, [name, email, hashedPassword, safeRole]);
+    const result = await query(sql, [name.trim(), email.trim().toLowerCase(), hashedPassword, safeRole]);
     return result.rows[0];
   },
 
   async findByEmail(email) {
-    const sql = 'SELECT * FROM users WHERE email = $1';
-    const result = await query(sql, [email]);
+    const sql = 'SELECT * FROM users WHERE LOWER(email) = LOWER($1) ORDER BY id LIMIT 1';
+    const result = await query(sql, [email.trim()]);
     return result.rows[0];
   },
 
@@ -41,24 +51,18 @@ export const userSqlRepository = {
 
   async ensureAdmin({ name, email, password }) {
     const existing = await this.findByEmail(email);
-    const hashedPassword = await bcrypt.hash(password, 10);
-
     if (existing) {
-      const result = await query(
-        `UPDATE users
-         SET name = $1, password = $2, role = $3
-         WHERE id = $4
-         RETURNING id, name, email, role, level, points, created_at, last_active_at`,
-        [name, hashedPassword, 'admin', existing.id],
-      );
-      return result.rows[0];
+      // Startup must never reset a configured administrator's credentials or
+      // silently elevate an existing student account.
+      return existing.role === 'admin' ? existing : null;
     }
 
     return this.create({ name, email, password, role: 'admin' });
   },
 
   async listStudents({ search = '', limit = 25, offset = 0 } = {}) {
-    const values = ['student', Math.min(Number(limit) || 25, 100), Math.max(Number(offset) || 0, 0)];
+    ({ search, limit, offset } = normalizeStudentListOptions({ search, limit, offset }))
+    const values = ['student', limit, offset];
     let where = 'WHERE role = $1';
 
     if (search) {
@@ -83,6 +87,14 @@ export const userSqlRepository = {
   async countStudents() {
     const result = await query("SELECT COUNT(*)::int AS count FROM users WHERE role = 'student'");
     return result.rows[0]?.count || 0;
+  },
+
+  async countActiveStudentsSince(since) {
+    const result = await query(
+      "SELECT COUNT(*)::int AS count FROM users WHERE role = 'student' AND last_active_at >= $1",
+      [since],
+    )
+    return result.rows[0]?.count || 0
   },
 
   async updatePoints(id, points) {

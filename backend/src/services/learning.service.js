@@ -5,12 +5,33 @@ import { LearningProfile } from '../models/learningProfile.model.js';
 import { Revision } from '../models/revision.model.js';
 import { Recommendation } from '../models/recommendation.model.js';
 import { Analytics } from '../models/analytics.model.js';
+import { LessonProgress } from '../models/programmingLearning.model.js';
 import { aiServiceClient } from '../utils/aiServiceClient.js';
+import mongoose from 'mongoose';
+
+const getPublishedLesson = async (id) => {
+  if (!mongoose.isValidObjectId(id)) {
+    const error = new Error('Invalid lesson ID');
+    error.statusCode = 400;
+    throw error;
+  }
+  const lesson = await Lesson.findOne({ _id: id, isPublished: { $ne: false } });
+  if (!lesson) {
+    const error = new Error('Lesson not found');
+    error.statusCode = 404;
+    throw error;
+  }
+  return lesson;
+};
+
+export const getPassedQuizIds = (quizScores = []) => quizScores
+  .filter((result) => Number(result.totalQuestions) > 0 && Number(result.score) / Number(result.totalQuestions) >= 0.7)
+  .map((result) => result.quizId);
 
 export const learningService = {
   // Get all lessons, optionally filtered by class and subject
   async getLessons(filters = {}) {
-    const query = {};
+    const query = { isPublished: { $ne: false } };
     if (filters.class) query.class = filters.class;
     if (filters.subject) query.subject = filters.subject;
     if (filters.chapter) query.chapter = filters.chapter;
@@ -20,10 +41,7 @@ export const learningService = {
 
   // Get single lesson details, including associated quizzes and tasks
   async getLessonById(id) {
-    const lesson = await Lesson.findById(id);
-    if (!lesson) {
-      throw new Error('Lesson not found');
-    }
+    const lesson = await getPublishedLesson(id);
 
     const quiz = await Quiz.findOne({ lessonId: id });
     const tasks = await Task.find({ lessonId: id });
@@ -52,8 +70,7 @@ export const learningService = {
 
   // Submit Quiz responses and trigger learning profile updates
   async submitQuiz(userId, lessonId, answers) {
-    const lesson = await Lesson.findById(lessonId);
-    if (!lesson) throw new Error('Lesson not found');
+    const lesson = await getPublishedLesson(lessonId);
 
     const quiz = await Quiz.findOne({ lessonId });
     if (!quiz) throw new Error('Quiz not found for this lesson');
@@ -159,11 +176,12 @@ export const learningService = {
 
   // Submit active learning tasks (Feynman teaching challenge or practice)
   async submitTask(userId, lessonId, taskData) {
+    await getPublishedLesson(lessonId);
     const { taskId, duration, readingSpeed, notesText, drawingStrokes, confidenceLevel } = taskData;
 
     const profile = await this.getOrCreateProfile(userId);
 
-    // Update behavioral data
+    // Update observed, self-reported behavioral data
     if (readingSpeed) profile.readingSpeed = Math.round((profile.readingSpeed + readingSpeed) / 2);
     if (notesText) {
       profile.manualNotes.push({
@@ -174,8 +192,6 @@ export const learningService = {
     if (drawingStrokes) profile.drawingActivity += drawingStrokes;
     if (confidenceLevel) profile.confidenceLevel = confidenceLevel;
     if (duration) profile.sessionDuration = Math.round((profile.sessionDuration + duration) / 2);
-
-    profile.challengePerformance = Math.min(100, (profile.challengePerformance || 0) + 10);
 
     // Log Analytics Event
     const log = new Analytics({
@@ -193,7 +209,6 @@ export const learningService = {
     await log.save();
 
     // Sync AI models and update profile
-    await this.syncProfilePredictions(userId, profile, 80); // Assume base task completion is equivalent to 80% accuracy
     await profile.save();
 
     return {
@@ -246,44 +261,85 @@ export const learningService = {
   // Calls FastAPI to run Scikit-Learn models on student stats
   async syncProfilePredictions(userId, profile, recentQuizScore) {
     try {
-      // Calculate features
+      // Build features from persisted student evidence using the same units as
+      // the training dataset. Never substitute a fabricated task score or
+      // default study duration for missing observations.
+      const [lessonRows, revisionRows] = await Promise.all([
+        LessonProgress.find({ userId: String(userId) }).select('completed watchPercentage timeSpent lastWatchedAt updatedAt').lean(),
+        Revision.find({ userId: String(userId) }).select('lastReviewed updatedAt').lean(),
+      ]);
+      const quizRows = Array.isArray(profile.quizScores) ? profile.quizScores : [];
+      const quizPercents = quizRows
+        .filter((row) => Number(row.totalQuestions) > 0)
+        .map((row) => (Number(row.score) / Number(row.totalQuestions)) * 100);
+      if (!quizPercents.length && Number.isFinite(Number(recentQuizScore))) quizPercents.push(Number(recentQuizScore));
+      const averageQuizScore = quizPercents.length
+        ? quizPercents.reduce((sum, value) => sum + value, 0) / quizPercents.length
+        : 0;
+      const activeDays = new Set([
+        ...lessonRows.map((row) => row.lastWatchedAt || row.updatedAt),
+        ...revisionRows.map((row) => row.lastReviewed || row.updatedAt),
+        ...quizRows.map((row) => row.timestamp),
+      ].filter(Boolean).map((date) => new Date(date).toISOString().slice(0, 10)));
       const features = {
-        quizScore: recentQuizScore,
-        taskCompletion: profile.challengePerformance / 100 || 0.8,
-        studyTime: Math.round(profile.sessionDuration / 60) || 20,
-        revisionCount: profile.revisionFrequency || 1,
-        daysSinceLastRevision: 2.0, // default days representation
-        readingSpeed: profile.readingSpeed || 150,
-        drawingActivity: profile.drawingActivity || 0,
-        videoDurationRatio: profile.learningStyle === 'Visual' ? 0.8 : 0.3,
-        notesLength: profile.manualNotes.length > 0 ? profile.manualNotes[profile.manualNotes.length - 1].noteContent.length : 100,
-        confidenceLevel: profile.confidenceLevel || 3,
+        quizScore: averageQuizScore,
+        quizAccuracy: averageQuizScore / 100,
+        lessonCompletionRate: lessonRows.length
+          ? lessonRows.filter((row) => row.completed || Number(row.watchPercentage) >= 90).length / lessonRows.length
+          : 0,
+        studyTime: lessonRows.length
+          ? lessonRows.reduce((sum, row) => sum + (Number(row.timeSpent) || 0), 0) / lessonRows.length / 60
+          : 0,
+        revisionCount: revisionRows.length,
+        daysActive: activeDays.size,
+        averageWatchPercentage: lessonRows.length
+          ? lessonRows.reduce((sum, row) => sum + (Number(row.watchPercentage) || 0), 0) / lessonRows.length / 100
+          : 0,
+        pauseFrequency: 0,
+        videoWatchRate: lessonRows.length ? 1 : 0,
+        averageAnswerTime: 0,
+        confidenceLevel: Number(profile.confidenceLevel) || 0,
       };
 
       const response = await aiServiceClient.post('/learning/predict-profile', features);
       
       profile.masteryScore = response.data.masteryScore;
       profile.retentionProbability = response.data.retentionProbability;
-      profile.learningStyle = response.data.learningStyle;
-      profile.difficulty = response.data.difficulty;
+      // The ML service no longer guesses a learning style from telemetry;
+      // preserve the student's explicit preference if one was recorded.
+      profile.learningStyle = response.data.learningStyle || profile.learningStyle || 'Mixed';
+      profile.difficulty = ({ Beginner: 'Easy', Intermediate: 'Medium', Advanced: 'Advanced' })[response.data.difficulty] || profile.difficulty || 'Medium';
+      profile.predictionSource = response.data.predictionSource || 'unknown';
+      profile.predictionTrainingData = response.data.trainingData || 'unknown';
+      profile.difficultySource = response.data.difficultySource || 'unknown';
 
       await profile.save();
     } catch (error) {
       console.error('Error syncing predictions from Python AI Service:', error.message);
-      // Fail-soft: apply default increments if AI service is down
-      profile.masteryScore = Math.min(100, (profile.masteryScore || 50) + 2);
+      // Keep the submitted learning activity, but never fabricate a mastery gain
+      // when the prediction service is unavailable.
       await profile.save();
+      return false;
     }
+    return true;
   },
 
   // Regenerate recommendations and cache them in DB
   async regenerateRecommendations(userId, profile, currentLesson) {
     try {
+      const masteryLevel = ({ Easy: 'Beginner', Medium: 'Intermediate', Advanced: 'Advanced' })[profile.difficulty] || profile.difficulty || 'Intermediate';
+      const recentQuiz = Array.isArray(profile.quizScores) ? profile.quizScores[profile.quizScores.length - 1] : null;
       const response = await aiServiceClient.post('/learning/generate-content', {
         type: 'notes',
         lessonTitle: currentLesson.title,
         lessonContent: currentLesson.content,
-        masteryLevel: profile.difficulty || 'Intermediate',
+        masteryLevel,
+        studentEvidence: {
+          recentQuizScore: recentQuiz?.totalQuestions > 0 ? Math.round((recentQuiz.score / recentQuiz.totalQuestions) * 100) : null,
+          weakConcepts: (profile.weakConcepts || []).slice(0, 5),
+          modelDifficulty: masteryLevel,
+          modelScoreStatus: profile.predictionTrainingData || 'synthetic',
+        },
       });
 
       const cardsResponse = await aiServiceClient.post('/learning/generate-content', {
@@ -291,16 +347,15 @@ export const learningService = {
         weakConcepts: profile.weakConcepts.length > 0 ? profile.weakConcepts : [currentLesson.chapter],
       });
 
-      const mockVideos = [
-        { title: `Mastering ${currentLesson.chapter} - Visual Concept Video`, url: currentLesson.videoUrl || 'https://www.youtube.com/embed/grnP3mDuRIA', duration: '8 min', concept: currentLesson.chapter },
-        { title: `Practical demonstration of ${currentLesson.title}`, url: currentLesson.videoUrl || 'https://www.youtube.com/embed/grnP3mDuRIA', duration: '12 min', concept: currentLesson.title }
-      ];
+      const videos = currentLesson.videoUrl
+        ? [{ title: currentLesson.title, url: currentLesson.videoUrl, concept: currentLesson.chapter }]
+        : [];
 
       const notes = [
         {
           title: `AI Personalized study guide - ${currentLesson.title}`,
           content: response.data.notes || 'No notes generated.',
-          level: profile.difficulty || 'Intermediate',
+          level: masteryLevel,
         },
       ];
 
@@ -312,7 +367,7 @@ export const learningService = {
         recs = new Recommendation({ userId });
       }
 
-      recs.videos = mockVideos;
+      recs.videos = videos;
       recs.notes = notes;
       recs.flashcards = flashcards;
       recs.challenges = [
@@ -331,7 +386,7 @@ export const learningService = {
   // Evaluates the dynamic unlock path for Class & Subject
   async getLearningPath(userId, className, subject) {
     // 1. Fetch lessons
-    const lessons = await Lesson.find({ class: className, subject }).sort({ order: 1 });
+    const lessons = await Lesson.find({ class: className, subject, isPublished: { $ne: false } }).sort({ order: 1 });
     const profile = await this.getOrCreateProfile(userId);
 
     // 2. Map lessons and evaluate prerequisites
@@ -343,18 +398,10 @@ export const learningService = {
     // Let's create a map of lesson completion / mastery
     // For simplicity, we can assume a prerequisite is completed if the lesson's concept is in "correctConcepts"
     // or if the student has a high overall mastery score and has registered a quiz score for it.
-    const completedLessonTitles = new Set();
-    
-    // Check which lessons have quiz scores registered in user profile
-    profile.quizScores.forEach((qs) => {
-      // Find the lesson associated with this score
-      // For this demo, let's assume if the student score is >= 1, they completed it
-      completedLessonTitles.add(qs.quizId); // we'll map actual titles below
-    });
-
-    // Let's check lesson titles where student scored well
-    // We can also trace by concepts
-    const lessonsWithQuiz = await Quiz.find({ _id: { $in: profile.quizScores.map(q => q.quizId) } });
+    // A lesson counts as completed for prerequisite unlocking after a passing
+    // quiz score; merely submitting an unanswered/failed quiz is insufficient.
+    const passedQuizIds = getPassedQuizIds(profile.quizScores);
+    const lessonsWithQuiz = await Quiz.find({ _id: { $in: passedQuizIds } });
     const completedTitles = new Set();
     lessonsWithQuiz.forEach(q => {
       completedTitles.add(q.lessonId.toString());
@@ -369,7 +416,7 @@ export const learningService = {
 
       // Check prerequisites
       for (const reqTitle of reqs) {
-        const prereqLesson = await Lesson.findOne({ title: reqTitle });
+        const prereqLesson = await Lesson.findOne({ title: reqTitle, isPublished: { $ne: false } });
         if (prereqLesson) {
           const prereqIdStr = prereqLesson._id.toString();
           const isPrereqCompleted = completedTitles.has(prereqIdStr);

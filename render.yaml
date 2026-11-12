@@ -19,6 +19,10 @@ services:
         sync: false
       - key: AI_SERVICE_URL
         sync: false
+      - key: AI_SERVICE_KEY
+        sync: false
+      - key: OLLAMA_FALLBACK_ENABLED
+        value: "false"
       - key: REDIS_URL
         sync: false
       - key: ADMIN_EMAIL
@@ -39,6 +43,10 @@ services:
         value: 8000
       - key: GEMINI_API_KEY
         sync: false
+      - key: AI_SERVICE_KEY
+        sync: false
+      - key: OLLAMA_FALLBACK_ENABLED
+        value: "false"
       - key: GEMINI_MODEL
         value: gemini-1.5-flash
       - key: CHROMA_HOST

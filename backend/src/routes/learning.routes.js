@@ -1,11 +1,12 @@
 import express from 'express';
 import { learningController } from '../controllers/learning.controller.js';
-import { authMiddleware } from '../middlewares/auth.middleware.js';
+import { authMiddleware, requireAdmin } from '../middlewares/auth.middleware.js';
+import { validate, learningQuizSubmissionSchema, learningTaskSubmissionSchema, learningProfileUpdateSchema } from '../utils/validators.js';
 
 const router = express.Router();
 
-// Allow public seed trigger (or auth-protected if preferred, let's allow it so the test scripts can trigger it easily)
-router.post('/lessons/import', learningController.importLessons);
+// Curriculum seeding is restricted to administrators.
+router.post('/lessons/import', authMiddleware, requireAdmin, learningController.importLessons);
 
 // All other routes require authentication
 router.use(authMiddleware);
@@ -13,10 +14,10 @@ router.use(authMiddleware);
 router.get('/lessons', learningController.getLessons);
 router.get('/lesson/:id', learningController.getLessonById);
 
-router.post('/quiz/submit', learningController.submitQuiz);
-router.post('/task/submit', learningController.submitTask);
+router.post('/quiz/submit', validate(learningQuizSubmissionSchema), learningController.submitQuiz);
+router.post('/task/submit', validate(learningTaskSubmissionSchema), learningController.submitTask);
 
-router.post('/learning/update', learningController.updateLearningProfile);
+router.post('/learning/update', validate(learningProfileUpdateSchema), learningController.updateLearningProfile);
 router.get('/learning/profile', learningController.getLearningProfile);
 router.get('/learning/path', learningController.getLearningPath);
 

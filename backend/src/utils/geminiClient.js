@@ -1,12 +1,9 @@
 import axios from "axios";
-import { parseJsonObject } from "./groqClient.js";
+import { parseJsonObject } from "./jsonParser.js";
 
 const GEMINI_API_URL_BASE =
   process.env.GEMINI_API_URL_BASE ||
   "https://generativelanguage.googleapis.com/v1beta";
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-1.5-flash";
-const GEMINI_JSON_MODEL = process.env.GEMINI_JSON_MODEL || "gemini-1.5-flash";
-
 const resolveGeminiKey = () => {
   const k = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   return k && !k.includes("<") ? k : null;
@@ -32,7 +29,7 @@ const prepareUserContent = (userPayload, maxChars = 24000) => {
 const resolveModel = (jsonMode) => {
   const model = jsonMode ? process.env.GEMINI_JSON_MODEL : process.env.GEMINI_MODEL;
   if (!model || model === "gemini-1.5-flash") {
-    return "gemini-2.5-flash";
+    return "gemini-3.8-flash";
   }
   return model;
 };
@@ -120,7 +117,7 @@ export const callGeminiJson = async ({
     return await tryCall(primaryModel);
   } catch (error) {
     console.warn(`[Gemini Client] Call failed with model ${primaryModel}: ${error.response?.data?.error?.message || error.message}`);
-    // If model not found (404), retry with gemini-2.5-flash or gemini-flash-latest
+    // If model not found (404), retry with the broadly available Gemini 2.5 Flash endpoint.
     if (error.response?.status === 404 && primaryModel !== "gemini-2.5-flash") {
       try {
         console.info(`[Gemini Client] Retrying with gemini-2.5-flash...`);

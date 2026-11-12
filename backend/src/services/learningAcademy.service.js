@@ -1,7 +1,7 @@
 import { LearningAcademyActivity } from '../models/learningAcademyActivity.model.js'
 import { callGroqJson } from '../utils/groqClient.js'
-import { twinService } from './twin.service.js'
 import { Analytics } from '../models/analytics.model.js'
+import { modelPersonalizationService } from './modelPersonalization.service.js'
 
 const DEFAULT_DIFFICULTY = 'medium'
 
@@ -9,16 +9,42 @@ const difficultyWeight = {
   beginner: 0.5,
   easy: 0.75,
   medium: 1,
+  intermediate: 1,
+  standard: 1,
   hard: 1.25,
+  advanced: 1.25,
   expert: 1.5,
+}
+
+const normalizeRequestedDifficulty = (value) => {
+  const normalized = String(value || '').toLowerCase()
+  if (['beginner', 'easy'].includes(normalized)) return 'beginner'
+  if (['intermediate', 'standard', 'medium'].includes(normalized)) return 'medium'
+  if (['advanced', 'hard'].includes(normalized)) return 'hard'
+  if (normalized === 'expert') return 'expert'
+  return null
 }
 
 const selectDifficulty = (user) => {
   if (user && typeof user === 'object' && typeof user.difficulty === 'string') {
-    const d = String(user.difficulty).toLowerCase()
-    if (difficultyWeight[d]) return d
+    const d = normalizeRequestedDifficulty(user.difficulty)
+    if (d) return d
   }
   return DEFAULT_DIFFICULTY
+}
+
+const resolveDifficulty = async (user, requestedDifficulty) => {
+  const requested = normalizeRequestedDifficulty(requestedDifficulty)
+  if (requested) return requested
+  const userId = user?.id || user?._id
+  if (userId) {
+    const guidance = await modelPersonalizationService.getStudentGuidance(String(userId)).catch(() => null)
+    if (guidance?.difficultyBand) {
+      return guidance.difficultyBand === 'beginner' ? 'beginner'
+        : guidance.difficultyBand === 'advanced' ? 'hard' : 'medium'
+    }
+  }
+  return selectDifficulty(user)
 }
 
 const staticAiLesson = ({ topic, difficulty }) => {
@@ -412,6 +438,16 @@ const asActivityIdentity = (user, { guestId, sessionId }) => {
   return { userId, guestId, sessionId }
 }
 
+const updateActivityForOwner = (activityId, user, { guestId, sessionId }, update, options = { new: true }) => {
+  const owner = user?.id
+    ? { userId: user.id }
+    : guestId && sessionId
+      ? { guestId, sessionId }
+      : null
+  if (!owner) return Promise.resolve(null)
+  return LearningAcademyActivity.findOneAndUpdate({ _id: activityId, ...owner }, update, options)
+}
+
 const upsertActivity = async (payload) => {
   try {
     const doc = new LearningAcademyActivity(payload)
@@ -419,30 +455,6 @@ const upsertActivity = async (payload) => {
     return doc
   } catch (_error) {
     return null
-  }
-}
-
-const logActivityToTwin = async (user, activity) => {
-  if (!user || !user.id) return
-  try {
-    const topicProgress = activity.topic ? { [activity.topic]: activity.completion || 0 } : {}
-    const progressPayload = {
-      studySession: {
-        kind: 'learning-academy',
-        mode: activity.lastMode || 'ai-learning',
-        topic: activity.topic,
-        completed: true,
-        understanding: activity.understanding ?? null,
-        teachBackScore: activity.teachBackScore ?? null,
-      },
-      mistake: activity.misconception ? { topic: activity.topic, label: activity.misconception } : undefined,
-    }
-    await twinService.updateProgress(user.id, {
-      ...progressPayload,
-      topicProgress,
-    })
-  } catch (_error) {
-    // Ignore twin failures; activity is already captured.
   }
 }
 
@@ -476,7 +488,7 @@ export const learningAcademyService = {
     }
 
     const cleanTopic = topic.trim().slice(0, 120)
-    const difficulty = requestedDifficulty || selectDifficulty(user)
+    const difficulty = await resolveDifficulty(user, requestedDifficulty)
     const history = await LearningAcademyActivity
       .find({
         $or: [{ userId: user && user.id ? user.id : null }, { guestId }].filter(Boolean),
@@ -529,7 +541,7 @@ export const learningAcademyService = {
       throw err
     }
     const cleanTopic = topic.trim().slice(0, 120)
-    const difficulty = requestedDifficulty || selectDifficulty(user)
+    const difficulty = await resolveDifficulty(user, requestedDifficulty)
     let mission = await aiGenerateMission({ topic: cleanTopic, difficulty }).catch(() => null)
     if (!mission || !mission.title) {
       mission = staticMission({ topic: cleanTopic })
@@ -555,7 +567,7 @@ export const learningAcademyService = {
       throw err
     }
     const cleanTopic = topic.trim().slice(0, 120)
-    const difficulty = requestedDifficulty || selectDifficulty(user)
+    const difficulty = await resolveDifficulty(user, requestedDifficulty)
     let prediction = await aiGeneratePrediction({ topic: cleanTopic, difficulty, concept }).catch(() => null)
     if (!prediction || !prediction.prompt) {
       prediction = staticPrediction({ topic: cleanTopic, concept })
@@ -588,7 +600,7 @@ export const learningAcademyService = {
     let activity = null
     try {
       if (activityId) {
-        activity = await LearningAcademyActivity.findByIdAndUpdate(activityId, { $set: updatePayload, $inc: { attempts: 0 } }, { new: true })
+        activity = await updateActivityForOwner(activityId, user, { guestId, sessionId }, { $set: updatePayload, $inc: { attempts: 0 } })
       }
     } catch (_error) {
       activity = null
@@ -621,8 +633,8 @@ export const learningAcademyService = {
     let activity = null
     try {
       if (activityId) {
-        activity = await LearningAcademyActivity.findByIdAndUpdate(
-          activityId,
+        activity = await updateActivityForOwner(
+          activityId, user, { guestId, sessionId },
           {
             $set: {
               topic: cleanTopic,
@@ -654,7 +666,6 @@ export const learningAcademyService = {
       })
     }
     if (activity) {
-      await logActivityToTwin(user, activity)
       await logAnalytic(activity, 'teach_back', {
         accuracy: evaluation.accuracy,
         misconceptionCount: (evaluation.misconceptions || []).length,
@@ -691,8 +702,8 @@ export const learningAcademyService = {
     let activity = null
     try {
       if (activityId) {
-        activity = await LearningAcademyActivity.findByIdAndUpdate(
-          activityId,
+        activity = await updateActivityForOwner(
+          activityId, user, { guestId, sessionId },
           {
             $set: {
               topic: cleanTopic,
@@ -731,7 +742,7 @@ export const learningAcademyService = {
     }
   },
 
-  async resolveMisconceptionFixed({ user, activityId }) {
+  async resolveMisconceptionFixed({ user, activityId, guestId, sessionId }) {
     if (!activityId) {
       const err = new Error('activityId is required')
       err.statusCode = 400
@@ -739,15 +750,14 @@ export const learningAcademyService = {
     }
     let activity = null
     try {
-      activity = await LearningAcademyActivity.findByIdAndUpdate(
-        activityId,
+      activity = await updateActivityForOwner(
+        activityId, user, { guestId, sessionId },
         { $set: { misconceptionFixed: true, completion: 95, 'stages.improved': true } },
         { new: true }
       )
     } catch (_error) {
       return { ok: false }
     }
-    if (activity && user && user.id) await logActivityToTwin(user, activity)
     return { ok: Boolean(activity), activityId: activity ? activity._id : null }
   },
 
@@ -758,7 +768,7 @@ export const learningAcademyService = {
       throw err
     }
     const cleanTopic = topic.trim().slice(0, 120)
-    const difficulty = requestedDifficulty || selectDifficulty(user)
+    const difficulty = await resolveDifficulty(user, requestedDifficulty)
     let result = await aiGenerateWhatIf({ topic: cleanTopic, difficulty, seedPrompt }).catch(() => null)
     if (!result || !Array.isArray(result.challenges) || result.challenges.length === 0) {
       result = staticWhatIf({ topic: cleanTopic })
@@ -767,8 +777,8 @@ export const learningAcademyService = {
     let activity = null
     try {
       if (activityId) {
-        activity = await LearningAcademyActivity.findByIdAndUpdate(
-          activityId,
+        activity = await updateActivityForOwner(
+          activityId, user, { guestId, sessionId },
           {
             $set: {
               topic: cleanTopic,
@@ -821,15 +831,13 @@ export const learningAcademyService = {
     const completion = Math.round(((stageIndex + 1) / validStages.length) * 100)
     let activity = null
     try {
-      activity = await LearningAcademyActivity.findByIdAndUpdate(
-        activityId,
+      activity = await updateActivityForOwner(
+        activityId, user, { guestId, sessionId },
         {
           $set: {
             [`stages.${stage}`]: true,
             completion,
             topic: topic ? topic.trim().slice(0, 120) : undefined,
-            sessionId: sessionId || undefined,
-            guestId: guestId || undefined,
           },
         },
         { new: true }
@@ -838,7 +846,6 @@ export const learningAcademyService = {
       return { ok: false }
     }
     if (activity && stage === 'improved' && user && user.id) {
-      await logActivityToTwin(user, activity)
     }
     if (activity) await logAnalytic(activity, `stage_${stage}`, { completion })
     return { ok: Boolean(activity), completion, activityId: activity ? activity._id : null }

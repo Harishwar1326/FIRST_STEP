@@ -53,6 +53,16 @@ const lessonSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    videoId: {
+      type: String,
+      trim: true,
+      index: true,
+    },
+    isPublished: {
+      type: Boolean,
+      default: true,
+      index: true,
+    },
     slug: {
       type: String,
       trim: true,

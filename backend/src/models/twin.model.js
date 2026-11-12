@@ -54,6 +54,9 @@ const learningTwinSchema = new mongoose.Schema(
         date: Date,
         duration: Number,
         subject: String,
+        confidence: Number,
+        source: { type: String, enum: ['self-reported'], default: 'self-reported' },
+        // Retained to read older records; new UI input is stored as confidence.
         accuracy: Number,
       },
     ],

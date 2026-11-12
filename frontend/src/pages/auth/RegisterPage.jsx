@@ -67,14 +67,14 @@ const RegisterPage = () => {
                 <span className="mb-2 block text-lg font-black text-gray-700">🔐 Password</span>
                 <div className="flex items-center gap-3 rounded-2xl border-2 border-purple-200 bg-purple-50 px-4 py-4 focus-within:border-purple-500 focus-within:ring-4 focus-within:ring-purple-200 transition-all">
                   <Lock className="h-6 w-6 text-purple-600" />
-                  <input type="password" value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} className={inputClass} placeholder="••••••••" required />
+                  <input type="password" value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} className={inputClass} placeholder="At least 8 characters" minLength={8} maxLength={72} required />
                 </div>
               </label>
               <label className="block">
                 <span className="mb-2 block text-lg font-black text-gray-700">✅ Confirm</span>
                 <div className="flex items-center gap-3 rounded-2xl border-2 border-pink-200 bg-pink-50 px-4 py-4 focus-within:border-pink-500 focus-within:ring-4 focus-within:ring-pink-200 transition-all">
                   <Lock className="h-6 w-6 text-pink-600" />
-                  <input type="password" value={formData.confirmPassword} onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })} className={inputClass} placeholder="••••••••" required />
+                  <input type="password" value={formData.confirmPassword} onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })} className={inputClass} placeholder="Confirm password" minLength={8} maxLength={72} required />
                 </div>
               </label>
             </div>
@@ -85,7 +85,7 @@ const RegisterPage = () => {
               </div>
             )}
 
-            <button type="submit" disabled={loading} className="w-full rounded-2xl bg-gradient-to-r from-green-500 to-blue-500 py-4 text-xl font-black text-white shadow-lg transition-all hover:scale-105 hover:shadow-xl disabled:opacity-60 disabled:hover:scale-100">
+              <button type="submit" disabled={loading} className="w-full rounded-2xl bg-[#183f39] py-4 text-xl font-black text-white shadow-lg transition-all hover:bg-[#245c50] hover:scale-105 hover:shadow-xl disabled:opacity-60 disabled:hover:scale-100">
               {loading ? '🚀 Creating account...' : '🎉 Start Learning!'}
             </button>
           </form>

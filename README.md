@@ -98,6 +98,35 @@ cp ai_service/.env.example ai_service/.env
 - Add your Google Gemini API key to `ai_service/.env`
 - Update database URLs if using cloud services
 - Set secure JWT secrets
+- Generate one random `AI_SERVICE_KEY` (for example, `python -c "import secrets; print(secrets.token_urlsafe(32))"`) and set the same value in the project-root `.env` for Compose, `backend/.env`, and `ai_service/.env` for local development.
+
+#### Local Ollama fallback for project reviews
+
+Remote Gemini, Groq, and OpenAI calls fall back to the configured Ollama model when the provider is unavailable. The AI service also uses Ollama for document study packs, generated learning content, and document Q&A. Install Ollama and download the model once:
+
+```bash
+ollama serve
+ollama pull qwen2.5-coder:3b
+```
+
+For backend and AI service processes running directly on your computer, set these in both `backend/.env` and `ai_service/.env`:
+
+```env
+OLLAMA_FALLBACK_ENABLED=true
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=qwen2.5-coder:3b
+OLLAMA_TIMEOUT_MS=90000
+```
+
+For Docker Compose, enable the optional local model service and use its persistent model volume:
+
+```powershell
+$env:OLLAMA_FALLBACK_ENABLED = "true"
+docker compose --profile local-ai up --build -d
+docker compose exec ollama ollama pull qwen2.5-coder:3b
+```
+
+The Compose backend and AI service are configured to reach Ollama at `http://ollama:11434`. The first model download needs internet access; later inference runs locally on the machine hosting Ollama. To use a different Ollama model, change `OLLAMA_MODEL` consistently in the backend and AI service configuration.
 
 4. Start all services:
 ```bash
@@ -107,7 +136,7 @@ docker-compose up --build
 5. Access the application:
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:5000
-- AI Service: http://localhost:8000
+- AI Service: internal to the Compose network; access it through the backend API
 - MongoDB: localhost:27017
 - PostgreSQL: localhost:5432
 - Redis: localhost:6379
@@ -144,6 +173,11 @@ cp .env.example .env
 # Update .env with your configuration
 python main.py
 ```
+
+For local development, set the same `AI_SERVICE_KEY` in `backend/.env` and
+`ai_service/.env`. The service rejects generation requests when the key is
+missing or incorrect; only `/health` is public. Docker Compose requires
+`AI_SERVICE_KEY` and `JWT_SECRET` from the project-root `.env` or shell.
 
 #### Database Setup
 

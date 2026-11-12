@@ -1,6 +1,17 @@
 version: '3.8'
 
 services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: firststep_ollama
+    profiles: ["local-ai"]
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - firststep_network
+
   mongodb:
     image: mongo:6.0
     container_name: firststep_mongodb
@@ -66,13 +77,22 @@ services:
       - DATABASE_URL=postgresql://firststep:firststep@postgres:5432/firststep
       - REDIS_URL=redis://redis:6379
       - AI_SERVICE_URL=http://ai-service:8000
+      - AI_SERVICE_KEY=${AI_SERVICE_KEY:?Set AI_SERVICE_KEY in the environment before starting the services}
+      - OLLAMA_FALLBACK_ENABLED=${OLLAMA_FALLBACK_ENABLED:-true}
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5-coder:3b}
+      - OLLAMA_TIMEOUT_MS=${OLLAMA_TIMEOUT_MS:-90000}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.8-flash}
+      - OLLAMA_FALLBACK_ENABLED=${OLLAMA_FALLBACK_ENABLED:-true}
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5-coder:3b}
+      - OLLAMA_TIMEOUT_MS=${OLLAMA_TIMEOUT_MS:-90000}
       - CHROMA_API_KEY=${CHROMA_API_KEY:-}
       - CHROMA_TENANT=${CHROMA_TENANT:-}
       - CHROMA_DATABASE=${CHROMA_DATABASE:-FIRST_STEP}
       - CHROMA_HOST=${CHROMA_HOST:-api.trychroma.com}
-      - JWT_SECRET=super_secret_firststep_development_jwt_key_123!
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in the environment before starting the backend}
     depends_on:
       mongodb:
         condition: service_started
@@ -90,10 +110,11 @@ services:
       context: ./ai_service
       dockerfile: Dockerfile
     container_name: firststep_ai_service
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     environment:
       - PORT=8000
+      - AI_SERVICE_KEY=${AI_SERVICE_KEY:?Set AI_SERVICE_KEY in the environment before starting the services}
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
       - CHROMA_API_KEY=${CHROMA_API_KEY:-}
@@ -101,7 +122,7 @@ services:
       - CHROMA_DATABASE=${CHROMA_DATABASE:-FIRST_STEP}
       - CHROMA_COLLECTION=${CHROMA_COLLECTION:-documents}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.8-flash}
     depends_on:
       - chromadb
     networks:
@@ -116,3 +137,4 @@ volumes:
   postgres_data:
   redis_data:
   chromadb_data:
+  ollama_data:

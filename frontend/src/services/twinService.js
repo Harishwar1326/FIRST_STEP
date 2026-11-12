@@ -1,6 +1,11 @@
 import { api } from "./api";
 
 export const twinService = {
+  getSnapshot: async () => {
+    const response = await api.get('/twin/snapshot');
+    return response.data;
+  },
+
   getProfile: async () => {
     const response = await api.get("/twin/profile");
     return response.data;

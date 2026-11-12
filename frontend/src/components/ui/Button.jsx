@@ -1,5 +1,5 @@
 const variants = {
-  primary: 'border-accent bg-accent text-white hover:bg-accent-strong',
+  primary: 'border-[#183f39] bg-[#183f39] text-white hover:bg-[#245c50]',
   secondary: 'border-app bg-surface text-primary hover:border-accent hover:text-primary',
   ghost: 'border-transparent bg-transparent text-secondary hover:bg-elevated hover:text-primary',
 }

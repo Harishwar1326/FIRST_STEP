@@ -7,12 +7,18 @@ export const aiServiceClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 60000, // 60 seconds for AI processing
+  timeout: Number(process.env.AI_SERVICE_TIMEOUT_MS) || 120000,
 })
 
 // Request interceptor
 aiServiceClient.interceptors.request.use(
   (config) => {
+    const serviceKey = process.env.AI_SERVICE_KEY
+    if (!serviceKey) {
+      return Promise.reject(new Error('AI_SERVICE_KEY is required for backend-to-AI requests'))
+    }
+    config.headers = config.headers || {}
+    config.headers['x-ai-service-key'] = serviceKey
     config.metadata = { startTime: new Date() }
     return config
   },

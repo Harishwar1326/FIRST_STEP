@@ -214,6 +214,11 @@ const LearningAcademyPage = () => {
     }
   };
 
+  // Refresh history when the tab is opened so saved sessions appear immediately.
+  useEffect(() => {
+    if (activeTab === 'progress') fetchInitialData();
+  }, [activeTab]);
+
   // Submit 8-Step Situation Wizard
   const handleEvaluateSituation = async () => {
     try {
@@ -262,6 +267,7 @@ const LearningAcademyPage = () => {
       setCompletedSessionData(res.session);
       setActivePracticeSession(null);
       setTimerRunning(false);
+      await fetchInitialData();
       setShowFeedbackModal(true);
       queryClient.invalidateQueries({ queryKey: ['learning-profile'] });
     } catch (err) {
@@ -278,11 +284,9 @@ const LearningAcademyPage = () => {
       setSubmittingFeedback(true);
       await academyService.submitFeedback({
         techniqueId: completedSessionData?.techniqueId || 'active-recall',
-        sessionId: completedSessionData?._id,
+        sessionId: /^[a-f\d]{24}$/i.test(completedSessionData?._id || '') ? completedSessionData._id : undefined,
         usefulnessRating,
         wouldUseAgain,
-        performanceBefore: 60,
-        performanceAfter: 80
       });
       alert('🎉 Thank you! Your feedback has been stored to optimize future personalization.');
       setShowFeedbackModal(false);
@@ -539,7 +543,7 @@ const LearningAcademyPage = () => {
   const categoriesList = ['All', 'Retrieval & Memory', 'Deep Understanding', 'Assessment & Practice', 'Focus & Discipline', 'Problem Solving', 'Organization'];
 
   return (
-    <div className="world-page redesign-surface min-h-screen pb-20">
+    <div className="world-page redesign-surface learning-academy-page min-h-screen pb-20">
       {/* Background Glows */}
       <div className="absolute right-10 top-12 h-44 w-44 rounded-full bg-orange-200/40 blur-3xl pointer-events-none" />
       <div className="absolute bottom-8 left-10 h-40 w-40 rounded-full bg-amber-200/40 blur-3xl pointer-events-none" />
@@ -586,11 +590,11 @@ const LearningAcademyPage = () => {
 
         <button
           onClick={() => setActiveTab('strategy')}
-          disabled={!situationResult}
+          disabled={!situationResult?.recommendedTechnique}
           className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-bold text-xs sm:text-sm transition ${
             activeTab === 'strategy'
               ? 'bg-white text-stone-950 shadow-md border border-stone-200'
-              : !situationResult
+              : !situationResult?.recommendedTechnique
               ? 'opacity-50 cursor-not-allowed text-stone-400'
               : 'text-stone-600 hover:text-stone-950 hover:bg-white/40'
           }`}
@@ -615,7 +619,7 @@ const LearningAcademyPage = () => {
           onClick={() => { setActiveTab('ai-lab'); resetAiWorkspace(); setAiMode('home'); }}
           className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-bold text-xs sm:text-sm transition ${
             activeTab === 'ai-lab'
-              ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md border border-orange-400'
+              ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-stone-950 shadow-md border border-orange-400'
               : 'text-stone-600 hover:text-stone-950 hover:bg-white/40'
           }`}
         >
@@ -903,7 +907,7 @@ const LearningAcademyPage = () => {
                 <button
                   onClick={handleEvaluateSituation}
                   disabled={evaluating}
-                  className="organic-button bg-orange-600 text-white text-xs py-3 px-6 font-black flex items-center gap-2 shadow-lg"
+                  className="organic-button bg-orange-600 text-stone-950 text-xs py-3 px-6 font-black flex items-center gap-2 shadow-lg"
                 >
                   {evaluating ? <RefreshCw size={14} className="animate-spin" /> : <Zap size={14} />}
                   Generate My Study Strategy
@@ -917,7 +921,7 @@ const LearningAcademyPage = () => {
       {/* ========================================================================= */}
       {/* TAB 2: RECOMMENDED STUDY STRATEGY & PLAN RESULTS PAGE – COMPACT / REQUIRED-ONLY */}
       {/* ========================================================================= */}
-      {activeTab === 'strategy' && situationResult && (
+      {activeTab === 'strategy' && situationResult?.recommendedTechnique && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-5 max-w-3xl mx-auto">
           {/* Primary Recommendation Hero Card */}
           <div className="floating-island bg-gradient-to-br from-stone-900 via-stone-900 to-stone-950 text-white p-6 md:p-7 relative overflow-hidden shadow-2xl border border-stone-800">
@@ -949,7 +953,7 @@ const LearningAcademyPage = () => {
             <div className="flex flex-wrap items-center gap-2.5 mt-6">
               <button
                 onClick={() => startPracticeSprint(situationResult.recommendedTechnique, situationResult.scheduleBlockMinutes || 25)}
-                className="organic-button bg-orange-600 hover:bg-orange-500 text-white font-black py-3.5 px-7 rounded-2xl flex items-center gap-2 shadow-xl transition text-sm"
+                className="organic-button bg-orange-600 hover:bg-orange-500 text-stone-950 font-black py-3.5 px-7 rounded-2xl flex items-center gap-2 shadow-xl transition text-sm"
               >
                 <PlayCircle size={18} />
                 Start {situationResult.scheduleBlockMinutes || 25}-min Session
@@ -1090,7 +1094,7 @@ const LearningAcademyPage = () => {
                     onClick={() => setCatalogCategoryFilter(cat)}
                     className={`py-1.5 px-3 rounded-xl text-xs font-bold transition border ${
                       catalogCategoryFilter === cat
-                        ? 'bg-orange-600 border-orange-600 text-white shadow-xs'
+                        ? 'bg-orange-600 border-orange-600 text-stone-950 shadow-xs'
                         : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'
                     }`}
                   >
@@ -1224,7 +1228,9 @@ const LearningAcademyPage = () => {
                 ))}
 
                 {!techniqueProgress?.recentSessions?.length && (
-                  <p className="text-xs text-stone-400 py-8 text-center font-semibold">No practice sessions logged yet. Launch a practice sprint to log history!</p>
+                  <p className="text-xs text-stone-400 py-8 text-center font-semibold">
+                    {loading ? 'Loading session history…' : 'No practice sessions logged yet. Launch a practice sprint to log history!'}
+                  </p>
                 )}
               </div>
             </div>
@@ -1517,7 +1523,7 @@ const LearningAcademyPage = () => {
                   <button
                     onClick={handleSubmitLessonPrediction}
                     disabled={predictionSelectedOption === null}
-                    className="organic-button bg-gradient-to-r from-fuchsia-500 to-pink-500 text-white py-3.5 px-6 rounded-2xl font-black text-sm shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="organic-button bg-gradient-to-r from-fuchsia-500 to-pink-500 text-stone-950 py-3.5 px-6 rounded-2xl font-black text-sm shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Lock in my prediction & reveal reasoning →
                   </button>
@@ -1617,7 +1623,7 @@ const LearningAcademyPage = () => {
                   </ul>
                   <button
                     onClick={handleLaunchWhatIf}
-                    className="mt-5 organic-button bg-gradient-to-r from-emerald-500 to-teal-500 text-white py-3 px-4 w-full rounded-2xl text-xs font-black shadow-md flex items-center justify-center gap-2"
+                    className="mt-5 organic-button bg-gradient-to-r from-emerald-500 to-teal-500 text-stone-950 py-3 px-4 w-full rounded-2xl text-xs font-black shadow-md flex items-center justify-center gap-2"
                   >
                     <Shuffle size={14} /> Run 3 What-If scenarios →
                   </button>
@@ -1650,7 +1656,7 @@ const LearningAcademyPage = () => {
                   <div className="flex flex-wrap gap-2.5">
                     <button
                       onClick={handleLaunchTeachBack}
-                      className="organic-button bg-gradient-to-r from-sky-500 to-indigo-500 text-white py-3 px-5 rounded-2xl text-xs font-black shadow-md flex items-center gap-2"
+                      className="organic-button bg-gradient-to-r from-sky-500 to-indigo-500 text-stone-950 py-3 px-5 rounded-2xl text-xs font-black shadow-md flex items-center gap-2"
                     >
                       <GraduationCap size={14} /> Teach it back →
                     </button>
@@ -1732,13 +1738,13 @@ const LearningAcademyPage = () => {
               </div>
 
               <div className="flex flex-wrap gap-3 justify-center">
-                <button onClick={handleLaunchPrediction} className="organic-button bg-gradient-to-r from-fuchsia-500 to-pink-500 text-white py-3 px-5 rounded-2xl text-xs font-black shadow-md flex items-center gap-2">
+                <button onClick={handleStartPrediction} className="organic-button bg-gradient-to-r from-fuchsia-500 to-pink-500 text-stone-950 py-3 px-5 rounded-2xl text-xs font-black shadow-md flex items-center gap-2">
                   <HelpCircle size={14} /> Predict a scenario
                 </button>
-                <button onClick={handleLaunchWhatIf} className="organic-button bg-gradient-to-r from-emerald-500 to-teal-500 text-white py-3 px-5 rounded-2xl text-xs font-black shadow-md flex items-center gap-2">
+                <button onClick={handleLaunchWhatIf} className="organic-button bg-gradient-to-r from-emerald-500 to-teal-500 text-stone-950 py-3 px-5 rounded-2xl text-xs font-black shadow-md flex items-center gap-2">
                   <Shuffle size={14} /> Run What-If experiments
                 </button>
-                <button onClick={handleLaunchTeachBack} className="organic-button bg-gradient-to-r from-sky-500 to-indigo-500 text-white py-3 px-5 rounded-2xl text-xs font-black shadow-md flex items-center gap-2">
+                <button onClick={handleLaunchTeachBack} className="organic-button bg-gradient-to-r from-sky-500 to-indigo-500 text-stone-950 py-3 px-5 rounded-2xl text-xs font-black shadow-md flex items-center gap-2">
                   <GraduationCap size={14} /> Teach it back
                 </button>
               </div>
@@ -1776,7 +1782,7 @@ const LearningAcademyPage = () => {
                   <button
                     onClick={handleSubmitFreeTextPrediction}
                     disabled={!predictionFreeText.trim()}
-                    className="mt-4 organic-button bg-gradient-to-r from-fuchsia-500 to-pink-500 text-white py-3.5 px-6 rounded-2xl font-black text-sm shadow-lg disabled:opacity-50"
+                    className="mt-4 organic-button bg-gradient-to-r from-fuchsia-500 to-pink-500 text-stone-950 py-3.5 px-6 rounded-2xl font-black text-sm shadow-lg disabled:opacity-50"
                   >
                     Submit my prediction →
                   </button>
@@ -1798,8 +1804,8 @@ const LearningAcademyPage = () => {
                     </ul>
                   </div>
                   <div className="flex flex-wrap gap-3 justify-center">
-                    <button onClick={handleStartAiLesson} className="organic-button bg-orange-600 text-white py-3 px-5 rounded-2xl text-xs font-black shadow-md"><Brain size={14} className="inline mr-1.5" /> Full AI lesson</button>
-                    <button onClick={handleLaunchTeachBack} className="organic-button bg-gradient-to-r from-sky-500 to-indigo-500 text-white py-3 px-5 rounded-2xl text-xs font-black shadow-md"><GraduationCap size={14} className="inline mr-1.5" /> Teach it back</button>
+                    <button onClick={handleStartAiLesson} className="organic-button bg-orange-600 text-stone-950 py-3 px-5 rounded-2xl text-xs font-black shadow-md"><Brain size={14} className="inline mr-1.5" /> Full AI lesson</button>
+                    <button onClick={handleLaunchTeachBack} className="organic-button bg-gradient-to-r from-sky-500 to-indigo-500 text-stone-950 py-3 px-5 rounded-2xl text-xs font-black shadow-md"><GraduationCap size={14} className="inline mr-1.5" /> Teach it back</button>
                   </div>
                 </div>
               )}
@@ -1864,7 +1870,7 @@ const LearningAcademyPage = () => {
                 ))}
               </div>
               <div className="flex flex-wrap gap-3 justify-center">
-                <button onClick={handleLaunchTeachBack} className="organic-button bg-gradient-to-r from-sky-500 to-indigo-500 text-white py-3 px-5 rounded-2xl text-xs font-black shadow-md flex items-center gap-2">
+                <button onClick={handleLaunchTeachBack} className="organic-button bg-gradient-to-r from-sky-500 to-indigo-500 text-stone-950 py-3 px-5 rounded-2xl text-xs font-black shadow-md flex items-center gap-2">
                   <GraduationCap size={14} /> Next → Teach it back
                 </button>
                 <button onClick={handleLaunchMisconception} className="soft-button py-3 px-5 rounded-2xl text-xs font-black flex items-center gap-2">
@@ -1904,7 +1910,7 @@ const LearningAcademyPage = () => {
                     <button
                       onClick={handleSubmitTeachBack}
                       disabled={teachBackText.trim().length < 20}
-                      className="organic-button bg-gradient-to-r from-sky-500 to-indigo-500 text-white py-3 px-6 rounded-2xl text-sm font-black shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                      className="organic-button bg-gradient-to-r from-sky-500 to-indigo-500 text-stone-950 py-3 px-6 rounded-2xl text-sm font-black shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                     >
                       <Sparkles size={15} /> Get Groq evaluation
                     </button>
@@ -1960,11 +1966,11 @@ const LearningAcademyPage = () => {
                   </div>
                   <div className="flex flex-wrap gap-3 justify-center">
                     {currentTeachBack.misconceptions?.length > 0 && (
-                      <button onClick={handleLaunchMisconception} className="organic-button bg-gradient-to-r from-rose-500 to-red-500 text-white py-3 px-5 rounded-2xl text-xs font-black shadow-md flex items-center gap-2">
+                      <button onClick={handleLaunchMisconception} className="organic-button bg-gradient-to-r from-rose-500 to-red-500 text-stone-950 py-3 px-5 rounded-2xl text-xs font-black shadow-md flex items-center gap-2">
                         <AlertTriangle size={14} /> Fix my misconceptions
                       </button>
                     )}
-                    <button onClick={handleFinishAiLesson} className="organic-button bg-gradient-to-r from-orange-500 to-amber-500 text-white py-3 px-5 rounded-2xl text-xs font-black shadow-md flex items-center gap-2">
+                    <button onClick={handleFinishAiLesson} className="organic-button bg-gradient-to-r from-orange-500 to-amber-500 text-stone-950 py-3 px-5 rounded-2xl text-xs font-black shadow-md flex items-center gap-2">
                       <Award size={14} /> Complete session →
                     </button>
                   </div>
@@ -2032,7 +2038,7 @@ const LearningAcademyPage = () => {
                 <button
                   onClick={handleResolveMisconceptionFixed}
                   disabled={misconceptionAnswer.trim().length < 10}
-                  className="mt-4 organic-button bg-gradient-to-r from-emerald-500 to-teal-500 text-white py-3 px-6 rounded-2xl text-sm font-black shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  className="mt-4 organic-button bg-gradient-to-r from-emerald-500 to-teal-500 text-stone-950 py-3 px-6 rounded-2xl text-sm font-black shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   <CheckCircle2 size={15} /> I've corrected this misconception → Mark fixed
                 </button>
@@ -2077,7 +2083,7 @@ const LearningAcademyPage = () => {
 
               <div className="flex gap-3">
                 <button onClick={() => setActivePracticeSession(null)} className="soft-button flex-1 py-3 text-xs font-bold">Cancel</button>
-                <button onClick={handleFinishPracticeSprint} disabled={submittingSession} className="organic-button bg-orange-600 text-white flex-1 py-3 text-xs font-bold">
+                <button onClick={handleFinishPracticeSprint} disabled={submittingSession} className="organic-button bg-orange-600 text-stone-950 flex-1 py-3 text-xs font-bold">
                   {submittingSession ? 'Saving...' : 'Finish & Rate Usefulness'}
                 </button>
               </div>
@@ -2125,7 +2131,7 @@ const LearningAcademyPage = () => {
                         key={ans}
                         onClick={() => setWouldUseAgain(ans)}
                         className={`p-2.5 rounded-xl border text-xs font-bold text-center transition ${
-                          wouldUseAgain === ans ? 'bg-orange-600 border-orange-600 text-white' : 'bg-stone-50 border-stone-200 text-stone-700'
+                          wouldUseAgain === ans ? 'bg-orange-600 border-orange-600 text-stone-950' : 'bg-stone-50 border-stone-200 text-stone-700'
                         }`}
                       >
                         {ans}
@@ -2134,7 +2140,7 @@ const LearningAcademyPage = () => {
                   </div>
                 </div>
 
-                <button onClick={handleSubmitFeedback} disabled={submittingFeedback} className="organic-button bg-orange-600 text-white w-full py-3.5 text-xs font-bold mt-2">
+                <button onClick={handleSubmitFeedback} disabled={submittingFeedback} className="organic-button bg-orange-600 text-stone-950 w-full py-3.5 text-xs font-bold mt-2">
                   {submittingFeedback ? 'Saving Feedback...' : 'Submit Feedback & Save Data'}
                 </button>
               </div>

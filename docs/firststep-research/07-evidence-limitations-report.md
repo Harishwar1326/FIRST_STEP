@@ -19,7 +19,7 @@
 - Thinking Lab is substantial in Node, but the FastAPI integration has endpoint mismatches and local fallbacks.
 - Video analytics measures playback behavior, not attention, understanding, or learning gain.
 - External AI integrations are conditional on environment variables; local fallback behavior is a normal execution path.
-- ML training metrics describe synthetic test data, not production performance. Runtime feature semantics are inconsistent for retention and style.
+- ML training metrics describe synthetic test data, not production performance. Artifact-backed inference follows the training feature order, but emergency in-memory retention and style fallbacks use mismatched feature semantics.
 
 ## Planned, absent, or unverified claims
 
@@ -34,7 +34,7 @@
 
 ## Publication blockers
 
-1. **Model validity:** align runtime feature names/semantics with training, store model metadata, validate input schemas, and retrain/evaluate on real consented data.
+1. **Model validity:** align emergency fallback feature names/semantics with the artifact schema, store model metadata, validate input schemas, and retrain/evaluate on real consented data.
 2. **Evaluation:** add held-out real data, cross-validation, calibration, subgroup analysis, expert content review, telemetry validation, and learning-outcome studies.
 3. **Security:** rotate the credential in `render.yaml`, remove secrets from tracked configuration, authenticate FastAPI, restrict CORS, validate resource ownership, and reconsider localStorage JWTs.
 4. **Operational completeness:** add `pytesseract` and the Tesseract system dependency or remove the import; pass external credentials correctly in deployment; deploy/configure the AI service where required.

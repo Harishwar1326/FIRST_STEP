@@ -69,6 +69,59 @@ export const protect = async (req, res, next) => {
   }
 };
 
+// Populate an authenticated user when a token is present while allowing the
+// explicitly guest-capable routes to continue without a token.
+export const optionalAuthMiddleware = async (req, res, next) => {
+  const authorization = req.headers.authorization;
+  if (!authorization) return next();
+  if (!authorization.startsWith("Bearer ")) {
+    return res.status(401).json({
+      status: "error",
+      message: "Authorization header must use a Bearer token.",
+    });
+  }
+
+  try {
+    const decoded = jwt.verify(authorization.slice(7), getJwtSecret());
+    let user;
+    try {
+      user = await userSqlRepository.findById(decoded.id);
+    } catch (dbError) {
+      console.warn("Postgres connection issue in optional auth middleware:", dbError.message);
+    }
+
+    if (!user && process.env.NODE_ENV !== "production" && decoded.id) {
+      req.user = {
+        id: decoded.id,
+        email: decoded.email,
+        name: decoded.name || "Student",
+        role: decoded.role || "student",
+      };
+      return next();
+    }
+
+    if (!user) {
+      return res.status(401).json({
+        status: "error",
+        message: "Not authorized to access this resource. User no longer exists.",
+      });
+    }
+
+    req.user = {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role || "student",
+    };
+    return next();
+  } catch (_error) {
+    return res.status(401).json({
+      status: "error",
+      message: "Not authorized to access this resource. Token is invalid or expired.",
+    });
+  }
+};
+
 export const requireAdmin = (req, res, next) => {
   if (req.user?.role !== "admin") {
     return res.status(403).json({

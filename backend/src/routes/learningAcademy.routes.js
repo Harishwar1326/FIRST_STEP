@@ -1,9 +1,11 @@
 import express from 'express';
 import { learningAcademyController } from '../controllers/learningAcademy.controller.js';
-import { authMiddleware } from '../middlewares/auth.middleware.js';
-import { validate, lessonGenerationSchema, missionGenerationSchema, predictionGenerationSchema, predictionSubmissionSchema, teachBackSchema, misconceptionSchema, whatIfSchema, stageCompletionSchema } from '../utils/validators.js';
+import { authMiddleware, optionalAuthMiddleware } from '../middlewares/auth.middleware.js';
+import { validate, lessonGenerationSchema, missionGenerationSchema, predictionGenerationSchema, predictionSubmissionSchema, teachBackSchema, misconceptionSchema, whatIfSchema, stageCompletionSchema, resolveMisconceptionSchema } from '../utils/validators.js';
 
 const router = express.Router();
+
+router.use(optionalAuthMiddleware);
 
 // Helpers: read operations can be performed by guests so the interactive UX
 // always works. Writes that associate data with an authenticated account still
@@ -18,7 +20,7 @@ router.post('/generate-prediction', validate(predictionGenerationSchema), learni
 router.post('/submit-prediction', validate(predictionSubmissionSchema), learningAcademyController.submitPrediction);
 router.post('/evaluate-teach-back', validate(teachBackSchema), learningAcademyController.evaluateTeachBack);
 router.post('/fix-misconception', validate(misconceptionSchema), learningAcademyController.fixMisconception);
-router.post('/resolve-misconception', learningAcademyController.resolveMisconceptionFixed);
+router.post('/resolve-misconception', validate(resolveMisconceptionSchema), learningAcademyController.resolveMisconceptionFixed);
 router.post('/generate-what-if', validate(whatIfSchema), learningAcademyController.generateWhatIf);
 router.post('/mark-stage', validate(stageCompletionSchema), learningAcademyController.markStageCompleted);
 

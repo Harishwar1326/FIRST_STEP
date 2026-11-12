@@ -7,25 +7,34 @@ const learningProfileSchema = new mongoose.Schema(
       required: true,
       unique: true,
     },
-    // Predicted Metrics from ML
+    // Legacy-compatible observed assessment score; unvalidated model estimates stay unset.
     masteryScore: {
       type: Number,
-      default: 50, // 0 - 100
+      default: null, // populated only after evidence-backed prediction
     },
     retentionProbability: {
       type: Number,
-      default: 0.8, // 0.0 - 1.0
+      default: null, // populated only after evidence-backed prediction
     },
     learningStyle: {
       type: String,
-      enum: ['Visual', 'Text', 'Practice-Oriented', 'Mixed'],
+      // Persist explicit student-selected assessment preference only. Behavioral
+      // telemetry is not a valid basis for diagnosing a fixed learning style.
+      enum: [
+        'Visual', 'Text', 'Practice-Oriented', 'Mixed',
+        'Video-first learning', 'Reading and notes', 'Practice-heavy learning',
+        'Project-based learning', 'Practice + Projects', 'Mixed learning',
+      ],
       default: 'Mixed',
     },
     difficulty: {
       type: String,
       enum: ['Easy', 'Medium', 'Advanced'],
-      default: 'Medium',
+      default: null,
     },
+    predictionSource: { type: String, default: null },
+    predictionTrainingData: { type: String, default: null },
+    difficultySource: { type: String, default: null },
 
     // Concept Trackers
     weakConcepts: [
@@ -83,7 +92,7 @@ const learningProfileSchema = new mongoose.Schema(
     ],
     confidenceLevel: {
       type: Number, // average subjective confidence level (1-5)
-      default: 3,
+      default: null,
     },
     difficultyRatings: {
       type: Map,
@@ -101,7 +110,7 @@ const learningProfileSchema = new mongoose.Schema(
     },
     sessionDuration: {
       type: Number, // average study session duration in seconds
-      default: 1800, // 30 minutes
+      default: null,
     },
     challengePerformance: {
       type: Number, // average challenge success rate (0-100)

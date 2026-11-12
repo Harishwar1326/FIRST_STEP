@@ -5,7 +5,7 @@
 
 ## Executive finding
 
-FirstStep is an implemented React, Express, MongoDB/PostgreSQL, and FastAPI platform with substantial feature breadth. The strongest verified implementation is the Smart Notes workflow, backend-persisted learning and administration data, and programming-lesson video telemetry. The platform also contains four independently trained scikit-learn models, but their runtime feature semantics are not fully aligned with their training features. Several AI-service modules are prototypes or fallback layers: they use in-memory state, fixed synthetic graphs, random initialization, hard-coded recommendations, or external LLMs rather than a validated adaptive learner model.
+FirstStep is an implemented React, Express, MongoDB/PostgreSQL, and FastAPI platform with substantial feature breadth. The strongest verified implementation is the Smart Notes workflow, backend-persisted learning and administration data, and programming-lesson video telemetry. The platform also contains four independently trained scikit-learn models. Artifact-backed inference follows the training feature order, while emergency in-memory retention and style fallback models use different feature meanings. Several AI-service modules are prototypes or fallback layers: they use in-memory state, fixed synthetic graphs, random initialization, hard-coded recommendations, or external LLMs rather than a validated adaptive learner model.
 
 The README is useful as an intended architecture description, but it overstates offline support, Redis session/caching, WebSocket use, graph generation from notes, and the operational completeness of the AI service. The classifications below are based on code paths, not marketing text.
 

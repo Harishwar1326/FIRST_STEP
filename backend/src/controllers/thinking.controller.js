@@ -1,15 +1,6 @@
 import { thinkingService } from '../services/thinking.service.js'
 import { asyncHandler } from '../utils/errorHandler.js'
 
-const defaultGuestUser = {
-  id: 'guest-thinking-lab',
-  email: 'guest@example.com',
-  name: 'Guest Student',
-  role: 'student',
-}
-
-const asThinkingUser = (user) => user && user.id ? user : defaultGuestUser
-
 export const thinkingController = {
   getThinkingLabFeed: asyncHandler(async (req, res) => {
     const feed = await thinkingService.getFeed(req.user, req.query)
@@ -43,7 +34,7 @@ export const thinkingController = {
 
   submitIndiaThinkingAnswer: asyncHandler(async (req, res) => {
     const evaluation = await thinkingService.evaluateIndiaThinkingAnswer(
-      asThinkingUser(req.user),
+      req.user,
       req.params.id,
       req.body
     )
@@ -55,7 +46,7 @@ export const thinkingController = {
   }),
 
   getThinkingLabNearby: asyncHandler(async (req, res) => {
-    const nearby = await thinkingService.getNearby(asThinkingUser(req.user), req.query)
+    const nearby = await thinkingService.getNearby(req.user, req.query)
     res.status(200).json({
       status: 'success',
       data: { items: nearby },
@@ -65,7 +56,7 @@ export const thinkingController = {
 
   createThinkingLabNearby: asyncHandler(async (req, res) => {
     const nearby = await thinkingService.getNearbyKnowledgeCards(
-      asThinkingUser(req.user),
+      req.user,
       req.body
     )
     res.status(200).json({
@@ -95,7 +86,7 @@ export const thinkingController = {
 
   submitThinkingLabAnswer: asyncHandler(async (req, res) => {
     const result = await thinkingService.submitThinkingLabAnswer(
-      asThinkingUser(req.user),
+      req.user,
       req.params.id,
       req.body
     )

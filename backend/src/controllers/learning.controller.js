@@ -73,15 +73,13 @@ export const learningController = {
     const userId = req.user.id;
     const profile = await learningService.getOrCreateProfile(userId);
 
-    // Update fields if provided
-    const fields = req.body;
-    Object.keys(fields).forEach((key) => {
-      if (profile[key] !== undefined) {
-        profile[key] = fields[key];
-      }
-    });
+    // The route schema accepts only user-supplied activity fields. Identity and
+    // model-derived mastery fields stay under server control.
+    Object.assign(profile, req.body);
 
-    await learningService.syncProfilePredictions(userId, profile, profile.masteryScore);
+    // Persist the activity fields only. A profile update is not a quiz result
+    // and must not be passed to the prediction model as one.
+    await profile.save();
     res.status(200).json({
       status: 'success',
       data: { profile },

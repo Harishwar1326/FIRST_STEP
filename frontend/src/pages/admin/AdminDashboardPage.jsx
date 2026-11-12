@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { Activity, Bell, BookOpen, Check, Clock, LogIn, Search, UserPlus, Users } from 'lucide-react'
+import { Activity, Bell, BookOpen, Check, Clock, LogIn, Pause, Play, Repeat, Search, Timer, UserPlus, Users } from 'lucide-react'
 import { adminService } from '../../services/adminService'
 import Badge from '../../components/ui/Badge'
 import Card from '../../components/ui/Card'
@@ -12,16 +12,26 @@ import SectionHeader from '../../components/ui/SectionHeader'
 
 const metricCards = [
   ['Students', 'totalStudents', Users],
-  ['Active', 'activeStudents', Activity],
+  ['Active (7 days)', 'activeStudents7d', Activity],
+  ['Active (30 days)', 'activeStudents', Activity],
   ['Lessons', 'totalLessons', BookOpen],
   ['Completed', 'lessonsCompleted', Clock],
   ['Avg Progress', 'averageStudentProgress', Activity],
+  ['Video Plays', 'totalVideoPlays', Play],
+  ['Pauses', 'totalVideoPauses', Pause],
+  ['Resumes', 'totalVideoResumes', Play],
+  ['Replays', 'totalVideoReplays', Repeat],
+  ['Observed Watch (min)', 'totalObservedWatchTime', Timer],
+  ['Avg Video Completion', 'averageVideoCompletion', Clock],
 ]
 
 const secondsToMinutes = (seconds = 0) => `${Math.round((Number(seconds) || 0) / 60)} min`
 
 const AdminDashboardPage = () => {
   const [search, setSearch] = useState('')
+  const [fromDate, setFromDate] = useState('')
+  const [toDate, setToDate] = useState('')
+  const [videoPage, setVideoPage] = useState(1)
   const queryClient = useQueryClient()
 
   const summaryQuery = useQuery({ queryKey: ['admin-summary'], queryFn: adminService.getSummary })
@@ -29,18 +39,22 @@ const AdminDashboardPage = () => {
     queryKey: ['admin-students', search],
     queryFn: () => adminService.getStudents({ search }),
   })
+  const videoAnalyticsQuery = useQuery({
+    queryKey: ['admin-video-analytics', fromDate, toDate, videoPage],
+    queryFn: () => adminService.getVideoAnalytics({ from: fromDate || undefined, to: toDate || undefined, page: videoPage, limit: 10 }),
+  })
 
-  // Notifications and Activities queries for real-time auth feed
+  // Poll at a sustainable pace under the production API request limit.
   const notifQuery = useQuery({
     queryKey: ['admin-notifications'],
     queryFn: adminService.getNotifications,
-    refetchInterval: 3000, // Poll every 3 seconds for instant updates
+    refetchInterval: 30000,
   })
 
   const activitiesQuery = useQuery({
     queryKey: ['admin-activities'],
     queryFn: adminService.getActivities,
-    refetchInterval: 3000,
+    refetchInterval: 30000,
   })
 
   const markReadMutation = useMutation({
@@ -56,6 +70,9 @@ const AdminDashboardPage = () => {
   const notifications = notifQuery.data?.notifications || []
   const unreadCount = notifQuery.data?.unreadCount || 0
   const activities = activitiesQuery.data?.activities || []
+  const videoAnalytics = videoAnalyticsQuery.data || { subjects: [], videos: [], totalVideos: 0 }
+  const dailyActivity = videoAnalytics.dailyActivity || []
+  const peakDailyPlays = dailyActivity.reduce((peak, day) => Math.max(peak, day.plays || 0), 1)
 
   return (
     <div className="world-page">
@@ -92,11 +109,90 @@ const AdminDashboardPage = () => {
           <Card key={key} className="p-4">
             <Icon size={20} className="text-accent" strokeWidth={1.5} />
             <p className="mt-3 font-display text-3xl font-black text-primary">
-              {key === 'averageStudentProgress' ? `${summary[key] || 0}%` : summary[key] || 0}
+              {key === 'averageStudentProgress' || key === 'averageVideoCompletion'
+                ? `${summary[key] || 0}%`
+                : key === 'totalObservedWatchTime'
+                  ? secondsToMinutes(summary[key])
+                  : summary[key] || 0}
             </p>
             <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">{label}</p>
           </Card>
         ))}
+      </section>
+
+      <section className="mt-6 grid gap-6 xl:grid-cols-2">
+        <Card className="p-5">
+          <SectionHeader eyebrow="Persisted video events" title="Subject engagement" />
+          <div className="mt-4 space-y-3">
+            {videoAnalytics.subjects.map((subject) => (
+              <div key={subject.subject} className="rounded-xl border border-app bg-elevated p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-black capitalize text-primary">{subject.subject}</p>
+                  <Badge tone="accent">{subject.participatingStudents} students</Badge>
+                </div>
+                <p className="mt-1 text-xs font-semibold text-secondary">
+                  {subject.participatingStudents} students · {subject.totalLessons} lessons · {subject.totalVideos} videos · {subject.plays} plays · {subject.pauses} pauses · {subject.replays} replays · {secondsToMinutes(subject.watchSeconds)} observed · {subject.lessonCompletionRate}% lesson completion
+                </p>
+              </div>
+            ))}
+            {!videoAnalytics.subjects.length ? <EmptyState title="No video events yet" message="Subject analytics will appear after students watch lessons." /> : null}
+          </div>
+        </Card>
+        <Card className="p-5">
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+            <SectionHeader eyebrow="Date filtered" title="Video engagement" />
+            <div className="flex flex-wrap gap-2">
+              <label className="text-xs font-bold text-muted">From<input aria-label="Video analytics start date" type="date" value={fromDate} onChange={(event) => { setFromDate(event.target.value); setVideoPage(1) }} className="mt-1 block rounded-lg border border-app bg-surface px-2 py-1 text-primary" /></label>
+              <label className="text-xs font-bold text-muted">To<input aria-label="Video analytics end date" type="date" value={toDate} onChange={(event) => { setToDate(event.target.value); setVideoPage(1) }} className="mt-1 block rounded-lg border border-app bg-surface px-2 py-1 text-primary" /></label>
+            </div>
+          </div>
+          <p className="mt-3 text-xs font-semibold text-muted">Event counts follow the selected UTC date range. Completion reflects each student’s current saved progress.</p>
+          <div className="mt-3 grid gap-2 text-xs font-semibold text-secondary sm:grid-cols-2">
+            <p>Most viewed: <span className="font-black text-primary">{videoAnalytics.mostViewedVideo?.title || '—'}</span> ({videoAnalytics.mostViewedVideo?.plays || 0} plays)</p>
+            <p>Least viewed: <span className="font-black text-primary">{videoAnalytics.leastViewedVideo?.title || '—'}</span> ({videoAnalytics.leastViewedVideo?.plays || 0} plays)</p>
+          </div>
+          <div className="mt-4 space-y-3">
+            {videoAnalytics.videos.map((video) => (
+              <div key={`${video.videoId}-${video.lessonId}`} className="rounded-xl border border-app bg-elevated p-3">
+                <p className="font-black text-primary">{video.title}</p>
+                <p className="text-xs font-semibold text-secondary">{video.subject} · {video.uniqueStudents} students · {video.plays} plays · {video.replays} replays · {secondsToMinutes(video.watchSeconds)} observed · {video.averageCompletion}% average completion</p>
+              </div>
+            ))}
+            {!videoAnalytics.videos.length ? <EmptyState title="No matching video activity" message="Try another date range or check back after students watch a lesson." /> : null}
+          </div>
+          <div className="mt-4 flex items-center justify-between text-xs font-semibold text-secondary">
+            <span>Page {videoAnalytics.page || 1} of {Math.max(1, Math.ceil((videoAnalytics.totalVideos || 0) / (videoAnalytics.limit || 10)))}</span>
+            <div className="flex gap-2"><Button size="sm" variant="ghost" disabled={videoPage <= 1} onClick={() => setVideoPage((page) => Math.max(1, page - 1))}>Previous</Button><Button size="sm" variant="ghost" disabled={videoPage * (videoAnalytics.limit || 10) >= (videoAnalytics.totalVideos || 0)} onClick={() => setVideoPage((page) => page + 1)}>Next</Button></div>
+          </div>
+        </Card>
+      </section>
+
+      <section className="mt-6 grid gap-6 xl:grid-cols-2">
+        <Card className="p-5">
+          <SectionHeader eyebrow="Daily trend · UTC" title="Video learning activity" />
+          <div className="mt-5 flex h-40 items-end gap-2 border-b border-app pb-2">
+            {dailyActivity.slice(-14).map((day) => (
+              <div key={day.date} className="flex h-full min-w-0 flex-1 flex-col justify-end text-center" title={`${day.date}: ${day.plays} plays, ${secondsToMinutes(day.watchSeconds)} observed`}>
+                <div className="mx-auto w-full max-w-8 rounded-t-lg bg-accent/80" style={{ height: `${Math.max(day.plays ? 8 : 2, (day.plays / peakDailyPlays) * 100)}%` }} />
+                <span className="mt-2 text-[9px] font-bold text-muted">{day.date.slice(5)}</span>
+              </div>
+            ))}
+            {!dailyActivity.length ? <p className="w-full self-center text-center text-sm font-semibold text-secondary">No video activity in this range.</p> : null}
+          </div>
+          <p className="mt-2 text-xs font-semibold text-muted">Bars show daily play events. Hover for observed watch time and details.</p>
+        </Card>
+        <Card className="p-5">
+          <SectionHeader eyebrow="Most recent events" title="Recent learning activity" />
+          <div className="mt-3 divide-y divide-app">
+            {(videoAnalytics.recentActivity || []).slice(0, 10).map((event) => (
+              <div key={event.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                <div className="min-w-0"><p className="truncate font-bold text-primary"><span className="capitalize">{event.type.replace('_', ' ')}</span> · {event.lessonTitle}</p><Link to={`/admin/students/${event.studentId}`} className="text-xs font-semibold text-accent hover:underline">Open student activity</Link></div>
+                <time className="shrink-0 text-xs font-semibold text-muted">{new Date(event.createdAt).toLocaleString()}</time>
+              </div>
+            ))}
+            {!videoAnalytics.recentActivity?.length ? <EmptyState title="No recent video activity" message="Recorded student video events will appear here." /> : null}
+          </div>
+        </Card>
       </section>
 
       {/* Real-Time Notifications & Activity Stream Grid */}

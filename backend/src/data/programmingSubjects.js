@@ -60,6 +60,7 @@ export const buildLessonSeed = () =>
       title,
       content: summary,
       videoUrl,
+      videoId: videoUrl.match(/(?:youtube\.com\/(?:embed\/|watch\?v=)|youtu\.be\/)([^?&/]+)/)?.[1] || '',
       concepts,
       difficulty: index < 3 ? 'Beginner' : index < 6 ? 'Intermediate' : 'Advanced',
       estimatedStudyTime: 18 + index * 2,

@@ -19,6 +19,10 @@ RUN python -m spacy download en_core_web_sm
 
 COPY . .
 
+# Build only the provenance-checked synthetic baseline artifacts. These remain
+# explicitly experimental until evaluated on consented real learning outcomes.
+RUN python training/train_model.py
+
 EXPOSE 8000
 
 CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]

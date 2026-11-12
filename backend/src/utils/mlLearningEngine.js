@@ -12,23 +12,28 @@ const AI_SERVICE_DIR = path.resolve(__dirname, '../../../ai_service');
 /**
  * Executes Scikit-Learn models through the AI microservice or local Python CLI.
  * Uses exact feature orders:
- * 1. Mastery: [quizScore, taskCompletion, studyTime, revisionCount]
+ * 1. Mastery: [quizScore, lessonCompletionRate, studyTime, revisionCount]
  * 2. Retention: [studyTime, revisionCount, daysActive, quizAccuracy]
  * 3. Learning Style: [averageWatchPercentage, pauseFrequency, videoWatchRate, averageAnswerTime]
  * 4. Difficulty: [masteryScore, quizScore, confidenceLevel]
  */
 export const predictLearningProfile = async (features = {}) => {
+  const bounded = (value, fallback, min, max) => {
+    const parsed = Number(value ?? fallback);
+    return Number.isFinite(parsed) ? Math.max(min, Math.min(max, parsed)) : fallback;
+  };
   const sanitized = {
-    quizScore: Number(features.quizScore ?? 75),
-    taskCompletion: Number(features.taskCompletion ?? 0.8),
-    studyTime: Number(features.studyTime ?? 20),
-    revisionCount: Number(features.revisionCount ?? 1),
-    daysActive: Number(features.daysActive ?? 5),
-    averageWatchPercentage: Number(features.averageWatchPercentage ?? 0.5),
-    pauseFrequency: Number(features.pauseFrequency ?? 1.0),
-    videoWatchRate: Number(features.videoWatchRate ?? 0.5),
-    averageAnswerTime: Number(features.averageAnswerTime ?? 30.0),
-    confidenceLevel: Number(features.confidenceLevel ?? 3.0),
+    quizScore: bounded(features.quizScore, 0, 0, 100),
+    quizAccuracy: bounded(features.quizAccuracy, 0, 0, 1),
+    lessonCompletionRate: bounded(features.lessonCompletionRate ?? features.taskCompletion, 0, 0, 1),
+    studyTime: bounded(features.studyTime, 0, 0, 1440),
+    revisionCount: bounded(features.revisionCount, 0, 0, 1000),
+    daysActive: bounded(features.daysActive, 0, 0, 3650),
+    averageWatchPercentage: bounded(features.averageWatchPercentage, 0, 0, 1),
+    pauseFrequency: bounded(features.pauseFrequency, 0, 0, 1000),
+    videoWatchRate: bounded(features.videoWatchRate, 0, 0, 1),
+    averageAnswerTime: bounded(features.averageAnswerTime, 0, 0, 86400),
+    confidenceLevel: bounded(features.confidenceLevel, 0, 0, 5),
   };
 
   // 1. Try FastAPI AI service over HTTP
@@ -66,31 +71,22 @@ export const predictLearningProfile = async (features = {}) => {
 
   // 3. Deterministic mathematical fallback in case python runtime is not available
   const masteryScore = Math.max(0, Math.min(100, Math.round(
-    sanitized.quizScore * 0.5 +
-    sanitized.taskCompletion * 25 +
+    sanitized.quizScore * 0.55 +
+    sanitized.lessonCompletionRate * 25 +
     Math.min(sanitized.studyTime, 60) * 0.25 +
     sanitized.revisionCount * 2
   )));
 
   const retentionProbability = Math.max(0.1, Math.min(0.99, Number((
-    (sanitized.quizScore / 100) * 0.6 +
+    sanitized.quizAccuracy * 0.55 +
     Math.min(sanitized.revisionCount / 5, 0.3) +
     Math.min(sanitized.daysActive / 30, 0.1)
   ).toFixed(2))));
 
-  let learningStyle = 'Visual';
-  if (sanitized.averageWatchPercentage > 0.6 && sanitized.videoWatchRate > 0.6) {
-    learningStyle = 'Visual';
-  } else if (sanitized.averageAnswerTime < 25) {
-    learningStyle = 'Interactive Quiz';
-  } else if (sanitized.taskCompletion > 0.7) {
-    learningStyle = 'Practical/Hands-on';
-  } else {
-    learningStyle = 'Text/Reading';
-  }
+  const learningStyle = null;
 
   let difficulty = 'Intermediate';
-  if (masteryScore > 75 && sanitized.quizScore > 80) difficulty = 'Advanced';
+  if (masteryScore >= 75 && sanitized.quizScore >= 80) difficulty = 'Advanced';
   else if (masteryScore < 45) difficulty = 'Beginner';
 
   return {
@@ -98,6 +94,9 @@ export const predictLearningProfile = async (features = {}) => {
     retentionProbability,
     learningStyle,
     difficulty,
+    predictionSource: 'transparent_rule_fallback',
+    trainingData: 'synthetic',
+    difficultySource: 'transparent_policy',
   };
 };
 

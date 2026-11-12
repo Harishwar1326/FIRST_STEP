@@ -20,6 +20,7 @@ const emptyLesson = {
   order: 1,
   estimatedStudyTime: 20,
   difficulty: 'Intermediate',
+  isPublished: true,
 }
 
 const getErrorMessage = (error) =>
@@ -75,6 +76,7 @@ const AdminContentPage = () => {
       order: row.order ?? 1,
       estimatedStudyTime: row.estimatedStudyTime ?? 20,
       difficulty: row.difficulty || 'Intermediate',
+      isPublished: row.isPublished !== false,
     })
     setFormError('')
     setFormOpen(true)
@@ -261,7 +263,7 @@ const AdminContentPage = () => {
                       </td>
                       <td className="p-4 font-semibold text-secondary">{lesson.order ?? 0}</td>
                       <td className="p-4">
-                        <Badge tone="success">{lesson.status || 'Active'}</Badge>
+                        <Badge tone={lesson.isPublished === false ? 'accent' : 'success'}>{lesson.status || 'Published'}</Badge>
                       </td>
                       <td className="p-4">
                         <div className="flex flex-wrap gap-2">
@@ -402,6 +404,15 @@ const AdminContentPage = () => {
                     placeholder="https://www.youtube.com/embed/..."
                   />
                 </Field>
+                <label className="flex items-center gap-3 self-end rounded-xl border border-app bg-elevated px-3 py-3 text-sm font-bold text-primary">
+                  <input
+                    type="checkbox"
+                    checked={lessonForm.isPublished !== false}
+                    onChange={(event) => setLessonForm((current) => ({ ...current, isPublished: event.target.checked }))}
+                    className="h-4 w-4 accent-emerald-700"
+                  />
+                  Published for students
+                </label>
               </div>
 
               <Field label="Description / content" required>

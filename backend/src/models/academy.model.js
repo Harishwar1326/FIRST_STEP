@@ -106,8 +106,9 @@ const studyStreakSchema = new mongoose.Schema(
 const techniqueRecommendationSchema = new mongoose.Schema(
   {
     userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      // Auth users are stored in SQL and use numeric IDs; guests use strings.
+      // Mixed also keeps compatibility with older Mongo ObjectId records.
+      type: mongoose.Schema.Types.Mixed,
       required: true,
     },
     primaryTechnique: {
@@ -164,8 +165,7 @@ const techniqueRecommendationSchema = new mongoose.Schema(
 const techniqueSessionSchema = new mongoose.Schema(
   {
     userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type: mongoose.Schema.Types.Mixed,
       required: true,
     },
     techniqueId: {
@@ -197,8 +197,7 @@ const techniqueSessionSchema = new mongoose.Schema(
 const studentTechniquePerformanceSchema = new mongoose.Schema(
   {
     userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type: mongoose.Schema.Types.Mixed,
       required: true,
     },
     techniqueId: {
@@ -226,8 +225,7 @@ const studentTechniquePerformanceSchema = new mongoose.Schema(
 const studentLearningSituationSchema = new mongoose.Schema(
   {
     userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type: mongoose.Schema.Types.Mixed,
       required: true,
     },
     timeAvailable: String,
@@ -247,12 +245,11 @@ const studentLearningSituationSchema = new mongoose.Schema(
 const techniqueFeedbackSchema = new mongoose.Schema(
   {
     userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type: mongoose.Schema.Types.Mixed,
       required: true,
     },
     techniqueId: String,
-    sessionId: mongoose.Schema.Types.ObjectId,
+    sessionId: mongoose.Schema.Types.Mixed,
     usefulnessRating: String, // 'Not useful', 'Slightly useful', 'Useful', 'Very useful', 'Extremely useful'
     wouldUseAgain: String, // 'Yes', 'Maybe', 'No'
     performanceBefore: Number,

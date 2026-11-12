@@ -6,7 +6,11 @@ logger = logging.getLogger("ai_service")
 
 class QuestionPipeline:
     def __init__(self):
-        self.nlp = spacy.load("en_core_web_sm")
+        try:
+            self.nlp = spacy.load("en_core_web_sm")
+        except Exception as exc:
+            logger.warning("spaCy model unavailable for question generation; using blank English tokenizer: %s", exc)
+            self.nlp = spacy.blank("en")
     
     # Bloom's Taxonomy levels
     BLOOM_LEVELS = {
